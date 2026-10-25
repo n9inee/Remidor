@@ -18,6 +18,7 @@ struct QuickAddView: View {
     @State private var draft: QuickAddDraft
     @State private var showCalendar = false
     @State private var justAdded = false
+    @State private var isAdding = false
     @State private var focusTrigger = 0
     @State private var selection = 0
 
@@ -49,11 +50,27 @@ struct QuickAddView: View {
 
             if !rows.isEmpty {
                 Divider().padding(.vertical, 2)
-                QuickSelectList(rows: rows, selection: $selection, onActivate: activate)
+                QuickSelectList(rows: rows, selection: $selection, onActivate: activate, onComplete: model.completeOnly)
                     .transition(.opacity)
             }
+
+            // The dropdown shows its own banner under the list; the hotkey box shows it here.
+            if onPickTask != nil {
+                if let completed = model.undoBannerItem {
+                    UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if let message = model.errorMessage {
+                    ErrorBanner(message: message, onDismiss: model.dismissError)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
         }
+        .background(undoShortcut)
+        .animation(.snappy(duration: 0.44), value: model.undoBannerItem?.id)
+        .animation(.snappy(duration: 0.44), value: model.errorMessage)
         .onChange(of: draft.text) { selection = 0 }
+        .onChange(of: rows.count) { selection = min(selection, max(rows.count - 1, 0)) }
         .onChange(of: model.lists.map(\.id)) { draft.reparse() }
         .onAppear {
             if autofocus { Task { @MainActor in focusTrigger += 1 } }
@@ -61,6 +78,19 @@ struct QuickAddView: View {
         .animation(.snappy(duration: 0.44), value: suggestions.map(\.id))
         .animation(.snappy(duration: 0.44), value: draft.pickedTags)
         .animation(.snappy(duration: 0.44), value: showCalendar)
+    }
+
+    /// ⌘Z undoes the last completed task. While something is typed it is left alone, so it still
+    /// undoes typing as usual.
+    private var undoShortcut: some View {
+        Button("Undo completion") { model.undoLast() }
+            .keyboardShortcut("z", modifiers: .command)
+            // Not while the banner shows a repeating task, which can't be undone: ⌘Z must not undo an older one.
+            .disabled(draft.text.isEmpty == false || model.recentlyCompleted.isEmpty
+                      || (model.undoBannerItem != nil && !model.undoBannerCanUndo))
+            .frame(width: 0, height: 0)
+            .opacity(0)
+            .accessibilityHidden(true)
     }
 
     private var inputField: some View {
@@ -76,6 +106,7 @@ struct QuickAddView: View {
                 color: color(for:),
                 focusTrigger: focusTrigger,
                 onSubmit: submit,
+                onShiftSubmit: completeHighlighted,
                 onTab: { _ = absorbTyped(); return true },
                 onMove: move
             )
@@ -113,6 +144,13 @@ struct QuickAddView: View {
         }
     }
 
+    /// Shift + Return checks off the highlighted task.
+    private func completeHighlighted() {
+        let rows = quickRows(suggestions: draft.suggestions)
+        guard rows.indices.contains(selection), case .task(let item) = rows[selection] else { return }
+        model.completeOnly(item)
+    }
+
     private func move(_ delta: Int) -> Bool {
         let count = quickRows(suggestions: draft.suggestions).count
         guard count > 0 else { return false }
@@ -148,8 +186,11 @@ struct QuickAddView: View {
     }
 
     private func addCurrent() {
-        guard let request = draft.request else { return }
+        // Return pressed twice in a row must not add the reminder twice.
+        guard !isAdding, let request = draft.request else { return }
+        isAdding = true
         Task {
+            defer { isAdding = false }
             guard await model.addReminder(request) else { return }
             draft.reset()
             showCalendar = false

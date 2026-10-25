@@ -16,6 +16,7 @@ struct ReminderItem: Identifiable, Equatable {
     var listColor: Color
     var due: Date?
     var dueHasTime = false          // false for date-only reminders
+    var isRepeating = false         // completing a repeating reminder moves it to its next date instead
     var priority = 0                // EventKit scale: 0 none, 1-4 high, 5 medium, 6-9 low
     var created: Date?
     var notes: String?

@@ -10,11 +10,13 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var model: TaskModel
     @State private var hotKey = HotKeyManager.shared
+    @State private var launchAtLogin = LaunchAtLogin.shared
     @State private var leftColumnHeight: CGFloat = 0
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 14) {
+                GroupBox("General") { launchAtLoginRow }
                 GroupBox("Sorting") {
                     Picker("Sort tasks by", selection: $model.sortOrder) {
                         ForEach(SortOrder.allCases) { Text($0.label).tag($0) }
@@ -54,6 +56,34 @@ struct SettingsView: View {
         }
         .padding(16)
         .task { await model.refresh() }
+        .onAppear { launchAtLogin.refresh() }
+        // The setting can also be changed in System Settings, so look again when coming back to the app.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            launchAtLogin.refresh()
+        }
+    }
+
+    private var launchAtLoginRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Open Remidor at login", isOn: Binding(
+                get: { launchAtLogin.isEnabled },
+                set: { launchAtLogin.setEnabled($0) }
+            ))
+            if launchAtLogin.needsApproval {
+                Text("macOS needs your approval before Remidor can start at login.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Open Login Items Settings…", action: launchAtLogin.openLoginItemsSettings)
+                    .controlSize(.small)
+            }
+            if let message = launchAtLogin.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(6)
     }
 
     private var listsPane: some View {

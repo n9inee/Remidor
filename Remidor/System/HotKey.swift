@@ -69,7 +69,11 @@ final class HotKeyManager {
 
         if !handlerInstalled {
             var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-            InstallEventHandler(GetApplicationEventTarget(), hotKeyEventHandler, 1, &spec, nil, nil)
+            let status = InstallEventHandler(GetApplicationEventTarget(), hotKeyEventHandler, 1, &spec, nil, nil)
+            guard status == noErr else {
+                conflict = true
+                return
+            }
             handlerInstalled = true
         }
         let id = EventHotKeyID(signature: OSType(0x524D4452), id: 1)   // 'RMDR'

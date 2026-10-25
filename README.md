@@ -25,6 +25,7 @@ Click the checklist icon to see your open reminders, grouped by list with a divi
 
 - **Smart lists.** Today, Scheduled and All are available alongside your own lists. Today and Scheduled always sort by due date and time first, then priority.
 - **Sorting.** Everything else sorts by due date, priority, title or creation date, whichever you pick in Settings.
+- **Resizable.** The list is only as tall as it needs to be, so folding every list leaves no scroll bar. Drag the small handle under the list to make it taller or shorter. Double-click it to reset. Remidor remembers the height.
 - **Collapsible lists.** Click a list's header to fold it shut or open it again. Which lists are folded is remembered between launches.
 - **List order.** Drag lists into any order in Settings. That order is used everywhere: the dropdown, the list menus and the quick-select box.
 - **Light and dark.** Follows your system appearance.
@@ -85,6 +86,7 @@ Press **⌃⌥N** from anywhere (you can change it in Settings) to open a floati
 
 - Start typing to add a reminder, exactly as in the dropdown. While you type, the first row is "Add …", so **Return** adds it.
 - Your open tasks are listed underneath. Typing filters them, **↑ ↓** moves the highlight and **Return** on a task starts working on it, followed by choosing how long.
+- **Check a task off** without leaving the box: click the circle in front of it, or press **⇧ Return** to complete the highlighted one. The list closes up and the next task takes its place.
 - Esc, or a click anywhere else, closes it.
 
 <p align="center">
@@ -116,10 +118,14 @@ Click the circle in front of a task to complete it. Click anywhere else on the r
 
 ### Undo
 
-Completing a task shows a banner with an **Undo** button for ten seconds. The footer's **Recent** menu keeps the last five completed tasks, so an accidental tick is easy to take back.
+Completing a task shows a banner with an **Undo** button for ten seconds, both in the dropdown and in the shortcut box. Press **⌘Z** to undo too. Press it again to step back through earlier completions. While you're typing in the add box, ⌘Z keeps its usual job of undoing your typing. The footer's **Recent** menu keeps the last five completed tasks, so an accidental tick is easy to take back.
+
+**Repeating tasks can't be undone here.** Completing one in Reminders keeps the original, moves it to its next date and logs a separate completed copy, so there is nothing safe to un-complete. Remidor shows a "Repeats" note instead of an Undo button. To take one back, use the Reminders app.
 
 <p align="center">
-  <img src="docs/images/undo.png" alt="The undo banner at the bottom of the dropdown" width="380">
+  <img src="docs/images/undo.png" alt="The undo banner at the bottom of the dropdown" width="340">
+  &nbsp;
+  <img src="docs/images/quickselect-undo.png" alt="The same banner in the shortcut box" width="400">
 </p>
 
 ### Settings
@@ -128,6 +134,7 @@ Completing a task shows a banner with an **Undo** button for ten seconds. The fo
   <img src="docs/images/settings.png" alt="The Settings window" width="560">
 </p>
 
+- **General.** *Open Remidor at login* starts the app when you log in. It also appears under System Settings → General → Login Items, and if macOS needs your approval the switch shows a button that opens that pane.
 - **Lists.** Choose which lists (and smart lists) appear, drag to reorder, and click the star to make a list the default for new reminders. Click the filled star again to go back to automatic.
 - **Sorting.** Due date, priority, title or creation date.
 - **Timer.** The default duration.
@@ -159,7 +166,7 @@ Each release also has a `.sha256` file if you'd like to check the download.
 Remidor is built with SwiftUI and has no dependencies.
 
 1. Open `Remidor.xcodeproj` in Xcode.
-2. Select the **Remidor** target, open *Signing & Capabilities* and choose your own team. A free Apple ID is enough. Reminders access needs a signed build.
+2. Give the build your own signing team. A free Apple ID is enough, and Reminders access needs a signed build. The simplest way is to create `Config/Local.xcconfig` (git ignores it) containing `DEVELOPMENT_TEAM = YOURTEAMID`. You can also choose the team under *Signing & Capabilities*, but that writes your team ID into the project file. Signing with a real team also means macOS asks for Reminders access only once. Without one, it asks again after every build.
 3. Run. Allow access to your reminders when macOS asks.
 
 Requires macOS 14 (Sonoma) or later and Xcode 16 or later. It runs on both Apple Silicon and Intel Macs.

@@ -1,0 +1,9 @@
+// Settings that belong to one machine go in Local.xcconfig, next to this file. Git ignores it.
+// Create it with your own Apple Developer team, for example:
+//
+//     DEVELOPMENT_TEAM = ABCDE12345
+//
+// Without a team Xcode signs the app for local use only, and macOS asks for Reminders access
+// again after every build. A free Apple ID is enough to get a team.
+
+#include? "Local.xcconfig"

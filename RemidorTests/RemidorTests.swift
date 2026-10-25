@@ -84,6 +84,37 @@ struct QuickAddParserTests {
         #expect(Set(result.tokens.map(\.kind)) == [.date, .priority, .list, .tag])
     }
 
+    @Test func emptyAndBlankInput() {
+        for input in ["", "   ", "\n"] {
+            let result = QuickAddParser.parse(input, listNames: lists)
+            #expect(result.title.isEmpty)
+            #expect(result.tokens.isEmpty)
+            #expect(result.due == nil)
+        }
+    }
+
+    @Test func lonelyMarkersAreJustText() {
+        #expect(QuickAddParser.parse("~", listNames: lists).title == "~")
+        #expect(QuickAddParser.parse("#", listNames: lists).title == "#")
+        #expect(QuickAddParser.parse("hello!", listNames: lists).priority == nil)
+        #expect(QuickAddParser.parse("wow!!!", listNames: lists).priority == nil)
+    }
+
+    @Test func onlyTheFirstListIsUsed() {
+        let result = QuickAddParser.parse("x ~Work ~Inbox", listNames: lists)
+        #expect(result.listName == "Work")
+        #expect(result.title == "x ~Inbox")
+    }
+
+    @Test func tokenRangesSurviveEmoji() {
+        let input = "🙂 call mom tmrw !!!"
+        let result = QuickAddParser.parse(input, listNames: lists)
+        let ns = input as NSString
+        let pieces = Set(result.tokens.map { ns.substring(with: $0.range) })
+        #expect(pieces == ["tmrw", "!!!"])
+        #expect(result.title == "🙂 call mom")
+    }
+
     @Test func autocompleteToken() {
         #expect(QuickAddParser.activeToken(in: "call mom ~Wo")?.query == "Wo")
         #expect(QuickAddParser.activeToken(in: "call mom #ph")?.trigger == "#")
@@ -124,6 +155,13 @@ struct OrderingTests {
         let nested = items.nestingSubtasks()
         #expect(nested.map(\.id) == ["p", "c", "x"])
         #expect(nested.map(\.depth) == [0, 1, 0])
+    }
+
+    @Test func subtasksPointingAtEachOtherAreNotDropped() {
+        let items = [item("a", "A", parent: "b"), item("b", "B", parent: "a"), item("c", "C")]
+        let nested = items.nestingSubtasks()
+        #expect(Set(nested.map(\.id)) == ["a", "b", "c"])
+        #expect(nested.count == 3)
     }
 
     @Test func subtaskWithoutParentHereStaysTopLevel() {

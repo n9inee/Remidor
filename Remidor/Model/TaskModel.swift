@@ -28,7 +28,7 @@ final class TaskModel {
     var hasAccess = false
     var accessDenied = false
 
-    // MARK: Focus timer
+    // MARK: Timer state
 
     var phase: Phase = .idle
     var now = Date()
@@ -39,12 +39,20 @@ final class TaskModel {
         return 0
     }
 
-    // MARK: Undo
+    // MARK: Undo state
 
     /// The last few completed tasks, newest first.
     var recentlyCompleted: [ReminderItem] = []
-    /// The latest completion, offered for undo in a banner for a few seconds.
+    /// The latest completion, shown in a banner for a few seconds.
     var undoBannerItem: ReminderItem?
+    /// False for repeating tasks. Reminders keeps the original, moves it to its next date and logs a
+    /// separate completed copy, so there is nothing safe to un-complete.
+    var undoBannerCanUndo = true
+
+    // MARK: Errors
+
+    /// The latest failure, shown in a banner for a few seconds.
+    var errorMessage: String?
 
     // MARK: Settings (saved between launches)
 
@@ -98,6 +106,9 @@ final class TaskModel {
     /// so a stale fetch can't bring them back.
     @ObservationIgnored private var pendingRemovals = [String: Date]()
     @ObservationIgnored private var undoExpiry: Task<Void, Never>?
+    @ObservationIgnored private var errorExpiry: Task<Void, Never>?
+    @ObservationIgnored private var isRefreshing = false
+    @ObservationIgnored private var refreshQueued = false
     @ObservationIgnored private var refreshLoop: Task<Void, Never>?
     @ObservationIgnored private var tickLoop: Task<Void, Never>?
 
@@ -127,8 +138,34 @@ final class TaskModel {
         Task { await refresh() }
     }
 
+    /// Reloads the lists and reminders. A refresh that starts while another is running is folded into
+    /// one follow-up pass, so an older fetch can never overwrite a newer one.
     func refresh() async {
-        guard EKEventStore.authorizationStatus(for: .reminder) == .fullAccess else { return }
+        if isRefreshing {
+            refreshQueued = true
+            return
+        }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        repeat {
+            refreshQueued = false
+            await loadReminders()
+        } while refreshQueued
+    }
+
+    private func loadReminders() async {
+        switch EKEventStore.authorizationStatus(for: .reminder) {
+        case .fullAccess:
+            break
+        case .notDetermined:
+            return   // requestAccess() is asking; it refreshes once the answer is in
+        default:
+            // Declined, restricted, or taken away while the app was running.
+            hasAccess = false
+            accessDenied = true
+            sections = []
+            return
+        }
         hasAccess = true
         accessDenied = false
 
@@ -136,7 +173,8 @@ final class TaskModel {
         let calendars = store.calendars(for: .reminder)
         updateLists(from: calendars)
 
-        let items = await fetchIncomplete(in: calendars)
+        // If the fetch fails, keep showing what is already there instead of an empty list.
+        guard let items = await fetchIncomplete(in: calendars) else { return }
 
         // Drop a pending removal once a fetch no longer returns the reminder, or after 10 seconds.
         let fetchedIDs = Set(items.map(\.id))
@@ -162,20 +200,25 @@ final class TaskModel {
             .map(\.element)
     }
 
-    private func fetchIncomplete(in calendars: [EKCalendar]) async -> [ReminderItem] {
+    private func fetchIncomplete(in calendars: [EKCalendar]) async -> [ReminderItem]? {
         let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
         return await withCheckedContinuation { continuation in
             store.fetchReminders(matching: predicate) { reminders in
-                let all = reminders ?? []
+                guard let all = reminders else {
+                    log.error("Fetching reminders failed")
+                    continuation.resume(returning: nil)
+                    return
+                }
                 continuation.resume(returning: all.map { r in
                     ReminderItem(
                         id: r.calendarItemIdentifier,
-                        title: r.title ?? "Untitled",
+                        title: r.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Untitled",
                         listID: r.calendar.calendarIdentifier,
                         listTitle: r.calendar.title,
                         listColor: Color(cgColor: r.calendar.cgColor),
                         due: r.dueDateComponents.flatMap { Calendar.current.date(from: $0) },
                         dueHasTime: r.dueDateComponents?.hour != nil,
+                        isRepeating: r.hasRecurrenceRules,
                         priority: r.priority,
                         created: r.creationDate,
                         notes: r.notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
@@ -241,7 +284,12 @@ final class TaskModel {
     // MARK: Changing reminders
 
     func addReminder(_ new: NewReminder) async -> Bool {
+        guard EKEventStore.authorizationStatus(for: .reminder) == .fullAccess else {
+            report("Remidor can't reach your reminders. Allow access in System Settings → Privacy & Security → Reminders.")
+            return false
+        }
         guard let calendar = calendar(withID: new.listID) ?? calendar(withID: defaultListID) ?? store.defaultCalendarForNewReminders() else {
+            report("There is no list to add the reminder to.")
             return false
         }
         let reminder = EKReminder(eventStore: store)
@@ -253,40 +301,54 @@ final class TaskModel {
             reminder.dueDateComponents = Calendar.current.dateComponents(parts, from: due)
             if new.hasTime { reminder.addAlarm(EKAlarm(absoluteDate: due)) }
         }
-        guard save(reminder, action: "add") else { return false }
+        guard save(reminder, action: "add") else {
+            report("Couldn't add the reminder. Please try again.")
+            return false
+        }
         await refresh()
         return true
     }
 
     /// Moves a reminder to another list.
     func move(_ item: ReminderItem, toListID id: String) {
-        guard item.listID != id, let reminder = reminder(withID: item.id), let target = calendar(withID: id) else { return }
+        guard item.listID != id else { return }
+        guard let reminder = reminder(withID: item.id), let target = calendar(withID: id) else {
+            report("That reminder or list no longer exists.")
+            scheduleRefresh()
+            return
+        }
         reminder.calendar = target
-        _ = save(reminder, action: "move")
+        if !save(reminder, action: "move") { report("Couldn't move “\(item.title)”.") }
         scheduleRefresh()
     }
 
     /// Permanently deletes a reminder.
     func delete(_ item: ReminderItem) {
-        guard let reminder = reminder(withID: item.id) else { return }
+        guard let reminder = reminder(withID: item.id) else {
+            report("That reminder no longer exists.")
+            scheduleRefresh()
+            return
+        }
         pendingRemovals[item.id] = Date()
         do { try store.remove(reminder, commit: true) } catch {
             log.error("Failed to delete reminder: \(error.localizedDescription)")
             pendingRemovals[item.id] = nil
+            report("Couldn't delete “\(item.title)”.")
         }
         scheduleRefresh()
     }
 
     /// Opens the task's list in the Reminders app, or just the app if the list can't be opened directly.
     func openInReminders(_ item: ReminderItem) {
-        @MainActor func openApp() {
-            guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.reminders") else { return }
-            NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
+        guard let url = URL(string: "x-apple-reminderkit://REMCDList/\(item.listID)") else { return openRemindersApp() }
+        NSWorkspace.shared.open(url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+            if error != nil { Task { @MainActor in self?.openRemindersApp() } }
         }
-        guard let url = URL(string: "x-apple-reminderkit://REMCDList/\(item.listID)") else { return openApp() }
-        NSWorkspace.shared.open(url, configuration: NSWorkspace.OpenConfiguration()) { _, error in
-            if error != nil { Task { @MainActor in openApp() } }
-        }
+    }
+
+    private func openRemindersApp() {
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.reminders") else { return }
+        NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
     }
 
     /// Completes a reminder without touching the task currently being timed.
@@ -295,36 +357,52 @@ final class TaskModel {
     }
 
     private func complete(_ item: ReminderItem) async {
-        // Hide it right away so a slow or stale refresh can't leave it in the list.
-        pendingRemovals[item.id] = Date()
-        sections = sections.compactMap { section in
-            let rest = section.items.filter { $0.id != item.id }
-            return rest.isEmpty ? nil : ReminderSection(list: section.list, items: rest)
+        // A repeating task isn't hidden: the same reminder stays and shows its next date after the refresh.
+        if !item.isRepeating {
+            // Hide it right away so a slow or stale refresh can't leave it in the list.
+            pendingRemovals[item.id] = Date()
+            sections = sections.compactMap { section in
+                let rest = section.items.filter { $0.id != item.id }
+                return rest.isEmpty ? nil : ReminderSection(list: section.list, items: rest)
+            }
         }
         if let reminder = reminder(withID: item.id) {
             reminder.isCompleted = true
-            if save(reminder, action: "complete") { offerUndo(for: item) } else { pendingRemovals[item.id] = nil }
+            if save(reminder, action: "complete") {
+                showCompletionBanner(for: item)
+            } else {
+                pendingRemovals[item.id] = nil
+                report("Couldn't complete “\(item.title)”.")
+            }
         } else {
             pendingRemovals[item.id] = nil
+            report("That reminder no longer exists.")
         }
         await refresh()
     }
 
     // MARK: Undo
 
-    private func offerUndo(for item: ReminderItem) {
+    private func showCompletionBanner(for item: ReminderItem) {
         var recent = item
         recent.depth = 0
-        recentlyCompleted.removeAll { $0.id == item.id }
-        recentlyCompleted.insert(recent, at: 0)
-        recentlyCompleted = Array(recentlyCompleted.prefix(5))
-
+        if !item.isRepeating {
+            recentlyCompleted.removeAll { $0.id == item.id }
+            recentlyCompleted.insert(recent, at: 0)
+            recentlyCompleted = Array(recentlyCompleted.prefix(5))
+        }
         undoBannerItem = recent
+        undoBannerCanUndo = !item.isRepeating
         undoExpiry?.cancel()
         undoExpiry = Task { [weak self] in
             try? await Task.sleep(for: .seconds(10))
             if !Task.isCancelled { self?.undoBannerItem = nil }
         }
+    }
+
+    /// Undoes the most recent completion. Repeating it steps back through the last five.
+    func undoLast() {
+        if let latest = recentlyCompleted.first { undoComplete(latest) }
     }
 
     /// Marks a recently completed task as not done again.
@@ -334,7 +412,9 @@ final class TaskModel {
         pendingRemovals[item.id] = nil
         if let reminder = reminder(withID: item.id) {
             reminder.isCompleted = false
-            _ = save(reminder, action: "undo")
+            if !save(reminder, action: "undo") { report("Couldn't undo — “\(item.title)” couldn't be restored.") }
+        } else {
+            report("Couldn't undo — “\(item.title)” no longer exists.")
         }
         scheduleRefresh()
     }
@@ -395,6 +475,20 @@ final class TaskModel {
     private func calendar(withID id: String?) -> EKCalendar? {
         guard let id else { return nil }
         return store.calendars(for: .reminder).first { $0.calendarIdentifier == id }
+    }
+
+    private func report(_ message: String) {
+        errorMessage = message
+        errorExpiry?.cancel()
+        errorExpiry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            if !Task.isCancelled { self?.errorMessage = nil }
+        }
+    }
+
+    func dismissError() {
+        errorExpiry?.cancel()
+        errorMessage = nil
     }
 
     private func save(_ reminder: EKReminder, action: String) -> Bool {

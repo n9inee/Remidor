@@ -18,6 +18,8 @@ struct HighlightedTextField: NSViewRepresentable {
     /// Changing this value moves keyboard focus into the field.
     var focusTrigger: Int
     var onSubmit: () -> Void
+    /// Shift + Return.
+    var onShiftSubmit: () -> Void = {}
     /// Return true to keep Tab inside the field; false lets it move focus to the next control.
     var onTab: () -> Bool
     var onMove: (Int) -> Bool = { _ in false }
@@ -96,7 +98,10 @@ struct HighlightedTextField: NSViewRepresentable {
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
             switch selector {
-            case #selector(NSResponder.insertNewline(_:)): parent.onSubmit(); return true
+            case #selector(NSResponder.insertNewline(_:)):
+                if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { parent.onShiftSubmit() } else { parent.onSubmit() }
+                return true
+            case #selector(NSResponder.insertLineBreak(_:)): parent.onShiftSubmit(); return true
             case #selector(NSResponder.insertTab(_:)): return parent.onTab()
             case #selector(NSResponder.moveUp(_:)): return parent.onMove(-1)
             case #selector(NSResponder.moveDown(_:)): return parent.onMove(1)

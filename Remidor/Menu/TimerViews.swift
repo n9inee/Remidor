@@ -121,6 +121,7 @@ struct FinishedTimerView: View {
             }
             .buttonStyle(.plain)
             .help("Close without extending or marking done")
+            .accessibilityLabel("Close")
         }
         .onAppear { bounce.toggle() }
     }

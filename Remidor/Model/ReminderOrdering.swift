@@ -44,6 +44,8 @@ extension Array where Element == ReminderItem {
             for child in children[item.id] ?? [] { add(child, depth: depth + 1) }
         }
         for item in self where !hasParentHere(item) { add(item, depth: 0) }
+        // Items whose parents point at each other have no top level; show them rather than drop them.
+        for item in self where !visited.contains(item.id) { add(item, depth: 0) }
         return result
     }
 

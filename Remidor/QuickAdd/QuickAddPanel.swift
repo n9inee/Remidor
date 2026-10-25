@@ -99,7 +99,7 @@ final class QuickAddPanelController {
             context.duration = 0.2
             panel.animator().alphaValue = 0
         }, completionHandler: {
-            panel.orderOut(nil)
+            MainActor.assumeIsolated { panel.orderOut(nil) }
         })
     }
 

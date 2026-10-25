@@ -16,18 +16,23 @@ struct TaskRow: View {
     let done: () -> Void
 
     @State private var hovering = false
-    @State private var ringHovering = false
     @State private var expanded = false
+    @State private var confirmingDelete = false
 
     private var hasDetails: Bool { item.notes != nil || item.url != nil || !item.tags.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            if expanded {
-                TaskDetails(item: item)
-                    .padding(.leading, 30).padding(.trailing, 8).padding(.bottom, 8)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            if confirmingDelete {
+                deleteConfirmation
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            } else {
+                header
+                if expanded {
+                    TaskDetails(item: item)
+                        .padding(.leading, 30).padding(.trailing, 8).padding(.bottom, 8)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
         }
         .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(hovering ? 0.08 : 0)))
@@ -35,6 +40,7 @@ struct TaskRow: View {
         .onHover { hovering = $0 }
         .contextMenu { contextMenu }
         .animation(.snappy(duration: 0.4), value: expanded)
+        .animation(.snappy(duration: 0.4), value: confirmingDelete)
         .animation(.snappy(duration: 0.3), value: hovering)
     }
 
@@ -49,12 +55,40 @@ struct TaskRow: View {
         }
         Button("Details") { expanded.toggle() }
         Divider()
-        Button("Delete", role: .destructive) { model.delete(item) }
+        Button("Delete…", role: .destructive) { confirmingDelete = true }
+    }
+
+    /// Asked inline, in the row, because a pop-up dialog would close the menu panel.
+    private var deleteConfirmation: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Delete “\(item.title)”?", systemImage: "trash")
+                .font(.callout.weight(.semibold))
+                .lineLimit(2)
+            Text(item.isRepeating
+                 ? "This also removes all its repeats from Reminders. It can't be undone."
+                 : "It will be removed from Reminders. This can't be undone.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Cancel") { confirmingDelete = false }
+                Spacer()
+                Button("Delete") {
+                    confirmingDelete = false
+                    model.delete(item)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.12)))
+        .padding(.vertical, 2)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            completionRing
+            CompletionRing(color: item.listColor, size: item.depth > 0 ? 14 : 16, action: done)
             VStack(alignment: .leading, spacing: 0) {
                 Text(rowTitle(item, markColor: item.listColor))
                     .lineLimit(hovering || expanded ? nil : 1)
@@ -99,29 +133,8 @@ struct TaskRow: View {
         }
         .buttonStyle(.plain)
         .help(expanded ? "Hide details" : "Show details")
+        .accessibilityLabel(expanded ? "Hide details" : "Show details")
         .transition(.opacity)
-    }
-
-    /// A hollow circle in the list's colour, like the Reminders app. Clicking it completes the task.
-    private var completionRing: some View {
-        let size: CGFloat = item.depth > 0 ? 14 : 16
-        return Button(action: done) {
-            ZStack {
-                Circle().strokeBorder(item.listColor, lineWidth: 1.5)
-                Circle().fill(item.listColor.opacity(ringHovering ? 1 : 0))
-                Image(systemName: "checkmark")
-                    .font(.system(size: size * 0.5, weight: .bold))
-                    .foregroundStyle(.white)
-                    .opacity(ringHovering ? 1 : 0)
-            }
-            .frame(width: size, height: size)
-            .frame(width: 22, height: 22)
-            .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .onHover { ringHovering = $0 }
-        .animation(.snappy(duration: 0.3), value: ringHovering)
-        .help("Mark as done")
     }
 }
 

@@ -22,8 +22,10 @@ struct MenuView: View {
         }
         .padding(12)
         .frame(width: 320)
+        .background(PanelAligner())
         .animation(.snappy(duration: 0.5), value: model.phase)
         .animation(.snappy(duration: 0.5), value: model.undoBannerItem?.id)
+        .animation(.snappy(duration: 0.5), value: model.errorMessage)
         .onAppear { model.scheduleRefresh() }
     }
 
@@ -40,7 +42,11 @@ struct MenuView: View {
                     model.select(item)
                 }
                 if let completed = model.undoBannerItem {
-                    UndoBanner(item: completed) { model.undoComplete(completed) }
+                    UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if let message = model.errorMessage {
+                    ErrorBanner(message: message, onDismiss: model.dismissError)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -84,26 +90,6 @@ struct MenuView: View {
             }
             FooterButton(title: "Quit", icon: "power") { NSApplication.shared.terminate(nil) }
         }
-    }
-}
-
-private struct UndoBanner: View {
-    let item: ReminderItem
-    let onUndo: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            Text("Completed “\(item.title)”").lineLimit(1).truncationMode(.tail)
-            Spacer(minLength: 4)
-            Button(action: onUndo) {
-                Label("Undo", systemImage: "arrow.uturn.backward").font(.callout.weight(.medium))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.accentColor)
-        }
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.08)))
     }
 }
 

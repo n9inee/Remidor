@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+# Private signing settings for this Mac
+Local.xcconfig
+
 # Xcode
 build/
 DerivedData/
