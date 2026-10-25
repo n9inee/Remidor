@@ -168,7 +168,7 @@ Remidor is a menu bar app and has no Dock icon. Use **Quit** in the dropdown to 
 
 ### Publishing a release
 
-Releases are built by GitHub Actions. Push a version tag and the workflow in `.github/workflows/release.yml` runs the tests, builds the app, signs it ad hoc and attaches the zip to a new release:
+Releases are built by GitHub Actions. Push a version tag and the workflow in `.github/workflows/release.yml` runs the tests, builds the app, signs it ad hoc and attaches the zip to a new release. The app's version number comes from the tag, so `v1.2.3` builds Remidor 1.2.3:
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0

@@ -31,6 +31,23 @@ jobs:
           -only-testing:RemidorTests
           CODE_SIGNING_ALLOWED=NO
 
+      # Tag v1.2.3 gives the app version 1.2.3 (a suffix such as -beta is dropped). A manual run keeps
+      # the version from the project. The build number is the workflow run number.
+      - name: Work out the version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            VERSION="${VERSION%%-*}"
+          else
+            VERSION="$(grep -m1 'MARKETING_VERSION' Remidor.xcodeproj/project.pbxproj | sed -E 's/.*= ([^;]+);.*/\1/')"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::'$VERSION' is not a version like 1, 1.2 or 1.2.3. Name the tag like v1.2.3."
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Building version $VERSION (build $GITHUB_RUN_NUMBER)"
+
       # A universal build (Apple Silicon and Intel), targeting macOS 14. An ad-hoc signature ("-") needs no
       # Apple Developer account; users approve the first launch themselves.
       - name: Build
@@ -44,14 +61,21 @@ jobs:
           ONLY_ACTIVE_ARCH=NO
           ENABLE_CODE_COVERAGE=NO
           CLANG_COVERAGE_MAPPING=NO
+          MARKETING_VERSION="$VERSION"
+          CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
           CODE_SIGN_IDENTITY="-"
           CODE_SIGN_STYLE=Manual
           DEVELOPMENT_TEAM=""
           CODE_SIGNING_REQUIRED=YES
           CODE_SIGNING_ALLOWED=YES
 
-      - name: Check the signature
-        run: codesign --verify --deep --strict build/Build/Products/Release/Remidor.app
+      - name: Check the signature and version
+        run: |
+          APP=build/Build/Products/Release/Remidor.app
+          codesign --verify --deep --strict "$APP"
+          BUILT="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+          [[ "$BUILT" == "$VERSION" ]] || { echo "::error::The app reports version $BUILT, expected $VERSION"; exit 1; }
+          lipo -archs "$APP/Contents/MacOS/Remidor"
 
       - name: Package
         run: |
