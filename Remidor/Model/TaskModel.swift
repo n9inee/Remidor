@@ -221,6 +221,7 @@ final class TaskModel {
                         due: r.dueDateComponents.flatMap { Calendar.current.date(from: $0) },
                         dueHasTime: r.dueDateComponents?.hour != nil,
                         isRepeating: r.hasRecurrenceRules,
+                        isFlagged: ReminderKit.isFlagged(r),
                         priority: r.priority,
                         created: r.creationDate,
                         notes: r.notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
@@ -241,6 +242,7 @@ final class TaskModel {
             let matching: [ReminderItem] = switch list.id {
             case SmartList.today.id: items.filter { ($0.due ?? .distantFuture) < endOfToday }
             case SmartList.scheduled.id: items.filter { $0.due != nil }
+            case SmartList.flagged.id: items.filter(\.isFlagged)
             case SmartList.all.id: items
             default: byList[list.id] ?? []
             }
@@ -298,14 +300,14 @@ final class TaskModel {
         reminder.calendar = calendar
         reminder.title = new.title
         reminder.priority = new.priority ?? 0
-        if let due = new.due {
-            let parts: Set<Calendar.Component> = new.hasTime ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day]
-            reminder.dueDateComponents = Calendar.current.dateComponents(parts, from: due)
-            if new.hasTime { reminder.addAlarm(EKAlarm(absoluteDate: due)) }
-        }
+        if let due = new.due { ReminderEditing.setDue(due, hasTime: new.hasTime, on: reminder) }
         guard save(reminder, action: "add") else {
             report("Couldn't add the reminder. Please try again.")
             return false
+        }
+        // A flag can only be set once the reminder exists.
+        if new.flagged, !ReminderKit.setFlagged(true, for: reminder, in: store) {
+            report("Added “\(new.title)”, but couldn't flag it.")
         }
         await refresh()
         return true
@@ -321,6 +323,47 @@ final class TaskModel {
         }
         reminder.calendar = target
         if !save(reminder, action: "move") { report("Couldn't move “\(item.title)”.") }
+        scheduleRefresh()
+    }
+
+    /// Sets or clears a reminder's due date.
+    func setDue(_ item: ReminderItem, to date: Date?, hasTime: Bool) {
+        change(item, "change the date of") { ReminderEditing.setDue(date, hasTime: hasTime, on: $0) }
+    }
+
+    /// Moves a reminder to another day, keeping its time of day.
+    func setDay(_ item: ReminderItem, to day: Date) {
+        let moved = ReminderEditing.moving(item.due, hasTime: item.dueHasTime, toDay: day)
+        setDue(item, to: moved.date, hasTime: moved.hasTime)
+    }
+
+    /// Sets a reminder's priority: 0 none, 1 high, 5 medium, 9 low.
+    func setPriority(_ item: ReminderItem, to priority: Int) {
+        change(item, "change the priority of") { $0.priority = priority }
+    }
+
+    /// Applies an edit to the stored reminder, saves it and reloads.
+    private func change(_ item: ReminderItem, _ action: String, _ edit: (EKReminder) -> Void) {
+        guard let reminder = reminder(withID: item.id) else {
+            report("That reminder no longer exists.")
+            scheduleRefresh()
+            return
+        }
+        edit(reminder)
+        if !save(reminder, action: action) { report("Couldn't \(action) “\(item.title)”.") }
+        scheduleRefresh()
+    }
+
+    /// Flags or unflags a reminder.
+    func setFlag(_ item: ReminderItem, to flagged: Bool) {
+        guard let reminder = reminder(withID: item.id) else {
+            report("That reminder no longer exists.")
+            scheduleRefresh()
+            return
+        }
+        if !ReminderKit.setFlagged(flagged, for: reminder, in: store) {
+            report("Couldn't \(flagged ? "flag" : "unflag") “\(item.title)”.")
+        }
         scheduleRefresh()
     }
 
@@ -499,6 +542,7 @@ final class TaskModel {
             return true
         } catch {
             log.error("Failed to \(action) reminder: \(error.localizedDescription)")
+            store.reset()   // drop the unsaved edit, so it doesn't linger on the object
             return false
         }
     }

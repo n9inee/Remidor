@@ -164,7 +164,7 @@ private struct ListRow: View {
                 Label {
                     Text(list.title)
                 } icon: {
-                    Image(systemName: list.isSmart ? "sparkles" : "list.bullet").foregroundStyle(list.color)
+                    Image(systemName: list.symbol).foregroundStyle(list.color)
                 }
             }
             Spacer(minLength: 0)

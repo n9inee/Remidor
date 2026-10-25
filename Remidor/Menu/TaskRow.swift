@@ -46,6 +46,23 @@ struct TaskRow: View {
 
     @ViewBuilder private var contextMenu: some View {
         Button("Open") { model.openInReminders(item) }
+        Menu("Date") {
+            Button("Today") { model.setDay(item, to: Date()) }
+            Button("Tomorrow") { model.setDay(item, to: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()) }
+            Button("Next Week") { model.setDay(item, to: Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()) }
+            if item.due != nil {
+                Divider()
+                Button("Remove Date") { model.setDue(item, to: nil, hasTime: false) }
+            }
+        }
+        Menu("Priority") {
+            ForEach([("None", 0), ("Low", 9), ("Medium", 5), ("High", 1)], id: \.1) { name, value in
+                Button { model.setPriority(item, to: value) } label: {
+                    if item.priority == value { Label(name, systemImage: "checkmark") } else { Text(name) }
+                }
+            }
+        }
+        Button(item.isFlagged ? "Remove Flag" : "Flag") { model.setFlag(item, to: !item.isFlagged) }
         Menu("List") {
             ForEach(model.lists.filter { !$0.isSmart }) { list in
                 Button { model.move(item, toListID: list.id) } label: {
@@ -97,6 +114,10 @@ struct TaskRow: View {
                 caption
             }
             Spacer(minLength: 0)
+            if item.isFlagged {
+                Image(systemName: "flag.fill").font(.caption).foregroundStyle(.orange)
+                    .accessibilityLabel("Flagged")
+            }
             if hovering && !expanded {
                 Image(systemName: "play.fill").font(.caption)
                     .foregroundStyle(.secondary)
@@ -166,6 +187,7 @@ struct TaskDetails: View {
                 if item.priority > 0 {
                     fact("Priority", item.priority <= 4 ? "High" : item.priority == 5 ? "Medium" : "Low")
                 }
+                if item.isFlagged { fact("Flag", "Flagged") }
                 if let created = item.created {
                     fact("Created", created.formatted(date: .abbreviated, time: .omitted))
                 }

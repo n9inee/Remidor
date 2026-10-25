@@ -76,12 +76,13 @@ struct QuickAddParserTests {
     }
 
     @Test func everythingTogether() {
-        let result = QuickAddParser.parse("call mom tmrw at 8pm !!! ~Inbox #phone", listNames: lists)
+        let result = QuickAddParser.parse("call mom tmrw at 8pm !!! * ~Inbox #phone", listNames: lists)
         #expect(result.title == "call mom #phone")
         #expect(result.priority == 1)
+        #expect(result.flagged)
         #expect(result.listName == "Inbox")
         #expect(result.hasTime)
-        #expect(Set(result.tokens.map(\.kind)) == [.date, .priority, .list, .tag])
+        #expect(Set(result.tokens.map(\.kind)) == [.date, .priority, .flag, .list, .tag])
     }
 
     @Test func emptyAndBlankInput() {
@@ -115,10 +116,26 @@ struct QuickAddParserTests {
         #expect(result.title == "🙂 call mom")
     }
 
+    @Test func starFlagsTheReminder() {
+        let result = QuickAddParser.parse("buy milk *", listNames: lists)
+        #expect(result.flagged)
+        #expect(result.title == "buy milk")
+        #expect(result.tokens.map(\.kind) == [.flag])
+        #expect(QuickAddParser.parse("* call mom tmrw", listNames: lists).flagged)
+    }
+
+    @Test func starsInsideWordsDoNotFlag() {
+        for input in ["wow*", "*bold*", "5*3", "**", "a *b"] {
+            #expect(!QuickAddParser.parse(input, listNames: lists).flagged, "\(input)")
+        }
+        #expect(QuickAddParser.parse("*bold*", listNames: lists).title == "*bold*")
+    }
+
     @Test func autocompleteToken() {
         #expect(QuickAddParser.activeToken(in: "call mom ~Wo")?.query == "Wo")
         #expect(QuickAddParser.activeToken(in: "call mom #ph")?.trigger == "#")
         #expect(QuickAddParser.activeToken(in: "call mom") == nil)
+        #expect(QuickAddParser.activeToken(in: "call mom *")?.trigger == "*")
     }
 }
 
@@ -167,6 +184,26 @@ struct OrderingTests {
     @Test func subtaskWithoutParentHereStaysTopLevel() {
         let nested = [item("c", "Child", parent: "missing")].nestingSubtasks()
         #expect(nested.map(\.depth) == [0])
+    }
+}
+
+@MainActor
+struct SmartListTests {
+    @Test func flaggedListHasItsOwnIcon() {
+        #expect(SmartList.flagged.symbol == "flag.fill")
+        #expect(SmartList.today.symbol == "sparkles")
+        #expect(ReminderList(id: "x", title: "X", color: .blue).symbol == "list.bullet")
+    }
+
+    @Test func smartListsComeInTheUsualOrder() {
+        #expect(SmartList.allLists.map(\.title) == ["Today", "Scheduled", "Flagged", "All"])
+    }
+
+    @Test func flaggedAndAllSortByTheUsersChoiceNotByTime() {
+        #expect(SmartList.sortsByTime(SmartList.today))
+        #expect(SmartList.sortsByTime(SmartList.scheduled))
+        #expect(!SmartList.sortsByTime(SmartList.flagged))
+        #expect(!SmartList.sortsByTime(SmartList.all))
     }
 }
 
@@ -230,5 +267,22 @@ struct UpdateCheckerTests {
         #expect(UpdateChecker.parse(Data()) == nil)
         #expect(UpdateChecker.parse(Data("not json".utf8)) == nil)
         #expect(UpdateChecker.parse(Data(#"{"message":"Not Found"}"#.utf8)) == nil)
+    }
+}
+
+@Suite struct ReminderEditingTests {
+    private func day(_ d: Int) -> Date {
+        Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: d, hour: 9, minute: 30))!
+    }
+
+    @Test func movingKeepsTheTimeOfDay() {
+        let moved = ReminderEditing.moving(day(3), hasTime: true, toDay: day(10))
+        let parts = Calendar.current.dateComponents([.day, .hour, .minute], from: moved.date)
+        #expect(moved.hasTime && parts.day == 10 && parts.hour == 9 && parts.minute == 30)
+    }
+
+    @Test func movingADateWithoutATimeStaysWithoutOne() {
+        let moved = ReminderEditing.moving(nil, hasTime: false, toDay: day(10))
+        #expect(!moved.hasTime && Calendar.current.component(.hour, from: moved.date) == 0)
     }
 }

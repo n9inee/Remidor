@@ -23,7 +23,7 @@ A menu bar companion for the macOS **Reminders** app. See what's open at a glanc
 
 Click the checklist icon to see your open reminders, grouped by list with a divider and a count for each. Lists use their Reminders colour, priorities show as `!`, `!!` and `!!!`, and overdue dates turn red. The list refreshes when you open it, whenever Reminders changes and every minute, so it stays in step with the Reminders app (and with iCloud).
 
-- **Smart lists.** Today, Scheduled and All are available alongside your own lists. Today and Scheduled always sort by due date and time first, then priority.
+- **Smart lists.** Today, Scheduled, Flagged and All are available alongside your own lists. Today and Scheduled always sort by due date and time first, then priority.
 - **Sorting.** Everything else sorts by due date, priority, title or creation date, whichever you pick in Settings.
 - **Resizable.** The list is only as tall as it needs to be, so folding every list leaves no scroll bar. Drag the small handle under the list to make it taller or shorter. Double-click it to reset. Remidor remembers the height.
 - **Collapsible lists.** Click a list's header to fold it shut or open it again. Which lists are folded is remembered between launches.
@@ -58,26 +58,29 @@ The box at the top of the dropdown adds reminders to any list, even lists you've
 | --- | --- | --- |
 | Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `next fri`, `in 20 min`, `in 3 days` | Due date, with an alert when a time is given |
 | Priority | `!` `!!` `!!!` | Low, medium, high |
+| Flag | `*` | Flags the reminder |
 | List | `~Work`, `~"My List"` | Adds to that list |
 | Tag | `#errands` | Added to the title and highlighted |
 
 Shorthand such as `tmr`, `tmrw`, `2moro`, `tonite` and `nxt` is understood. A bare hour after `at` is read as 1–6 → pm, 7–11 → am and 12 → noon, so `at 8` means 8 am and `at 4` means 4 pm. Add `am` or `pm` to be explicit.
 
 <p align="center">
-  <img src="docs/images/quickadd-typed.png" alt="Highlighted date, priority, list and tag in the quick-add box" width="560">
+  <img src="docs/images/quickadd-typed.png" alt="Highlighted date, priority, flag, list and tag in the quick-add box" width="560">
 </p>
 
-Everything has a button too (date with a calendar, priority, list), and the buttons always show what will be saved. A typed value wins over a button choice, and the other way round.
+A `*` only counts as a flag when it stands alone, so `*bold*` and `5*3` are left alone. Everything has a button too (date with a calendar, priority, flag, list), and the buttons always show what will be saved. A typed value wins over a button choice, and the other way round.
 
-- **Autocomplete.** Typing `~` or `#` suggests your lists and tags. Click a suggestion or press Tab to accept it.
-- **Tab turns text into chips.** Pressing Tab accepts the open suggestion and moves everything highlighted (date, priority, list and tags) out of the text box and onto the chips. Type a new date and press Tab again to replace the old one.
+- **Autocomplete.** Typing `~`, `#` or `*` suggests your lists, your tags or the flag. Click a suggestion or press Tab to accept it.
+- **Tab turns text into chips.** Pressing Tab accepts the open suggestion and moves everything highlighted (date, priority, flag, list and tags) out of the text box and onto the chips. Type a new date and press Tab again to replace the old one.
 - **Return does the same, then adds.** It takes in the open suggestion and every highlighted piece, then adds the reminder.
 - **Default list.** New reminders go to the list you starred in Settings, otherwise to **Inbox** if you have one, otherwise to your Reminders default list.
 
 <p align="center">
-  <img src="docs/images/quickadd-suggest.png" alt="List suggestions while typing ~Ho" width="360">
+  <img src="docs/images/quickadd-suggest.png" alt="List suggestions while typing ~Ho" width="290">
   &nbsp;
-  <img src="docs/images/quickadd-chips.png" alt="The same reminder after pressing Tab, with chips for date, priority, list and tag" width="360">
+  <img src="docs/images/quickadd-flag.png" alt="The flag suggestion while typing a star" width="290">
+  &nbsp;
+  <img src="docs/images/quickadd-chips.png" alt="The same reminder after pressing Tab, with chips for date, priority, flag, list and tag" width="290">
 </p>
 
 ### Global shortcut and quick select
@@ -95,7 +98,7 @@ Press **⌃⌥N** from anywhere (you can change it in Settings) to open a floati
 
 ### Sub-tasks, tags and details
 
-Sub-tasks sit directly under their parent, indented, and Reminders' own tags show under the title in purple. A chevron expands any row to show the notes (links are clickable), the URL, tags and key facts such as list, due date, priority and creation date. Hovering a long title shows it in full.
+Sub-tasks sit directly under their parent, indented, and Reminders' own tags show under the title in purple. A chevron expands any row to show the notes (links are clickable), the URL, tags and key facts such as list, due date, priority and creation date. Flagged tasks show a small orange flag, and the Flagged smart list collects them. Hovering a long title shows it in full.
 
 <p align="center">
   <img src="docs/images/details.png" alt="An expanded reminder with notes, a link, details and two sub-tasks" width="400">
@@ -108,9 +111,12 @@ Click the circle in front of a task to complete it. Click anywhere else on the r
 | Item | What it does |
 | --- | --- |
 | **Open** | Opens the task's list in the Reminders app |
+| **Date** | Sets the due day to Today, Tomorrow or Next Week (the time of day is kept), or removes the date |
+| **Priority** | Sets None, Low, Medium or High |
+| **Flag** / **Remove Flag** | Flags the task, or takes the flag off |
 | **List** | Moves the task to another list |
 | **Details** | Expands the row |
-| **Delete** | Deletes the reminder |
+| **Delete** | Deletes the reminder, after asking you to confirm |
 
 <p align="center">
   <img src="docs/images/contextmenu.png" alt="The right-click menu" width="400">
@@ -197,8 +203,8 @@ Everything stays on your Mac. Remidor reads and changes reminders through Apple'
 
 ## How it works, and its limits
 
-- **Sub-tasks and tags** aren't part of EventKit's public API. Remidor reads them through undocumented fields on each reminder (see [`ReminderKit.swift`](Remidor/Model/ReminderKit.swift)). If macOS ever changes them, sub-tasks show as ordinary rows and tags are hidden, and nothing else breaks.
-- **Smart lists.** Apple doesn't expose Today, Scheduled or Flagged to other apps. Remidor recreates Today, Scheduled and All from due dates. Flagged isn't available.
+- **Sub-tasks, tags and flags** aren't part of EventKit's public API. Remidor reads them through undocumented fields on each reminder, and sets flags through the same internal save request EventKit uses (see [`ReminderKit.swift`](Remidor/Model/ReminderKit.swift)). If macOS ever changes them, sub-tasks show as ordinary rows, tags and flags are hidden, flagging shows an error message, and nothing else breaks.
+- **Smart lists.** Apple doesn't expose its smart lists to other apps. Remidor recreates Today, Scheduled and All from due dates. Flagged uses the real flags.
 - **Tags on new reminders.** Apps can't create real Reminders tags, so a `#tag` added in the quick-add box becomes plain text in the title. Existing tags are shown properly.
 - **Opening a list.** "Open" uses Reminders' internal link format and falls back to simply opening the app if that doesn't work.
 - **Delete is permanent.** There's no undo for deleting a reminder, only for completing one.

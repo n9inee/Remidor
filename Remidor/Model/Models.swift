@@ -17,6 +17,7 @@ struct ReminderItem: Identifiable, Equatable {
     var due: Date?
     var dueHasTime = false          // false for date-only reminders
     var isRepeating = false         // completing a repeating reminder moves it to its next date instead
+    var isFlagged = false
     var priority = 0                // EventKit scale: 0 none, 1-4 high, 5 medium, 6-9 low
     var created: Date?
     var notes: String?
@@ -34,6 +35,12 @@ struct ReminderList: Identifiable {
     let title: String
     let color: Color
     var isSmart = false
+
+    /// The SF Symbol shown next to the list's name.
+    var symbol: String {
+        if id == SmartList.flagged.id { return "flag.fill" }
+        return isSmart ? "sparkles" : "list.bullet"
+    }
 }
 
 struct ReminderSection: Identifiable {
@@ -46,8 +53,9 @@ struct ReminderSection: Identifiable {
 enum SmartList {
     static let today = ReminderList(id: "smart.today", title: "Today", color: .blue, isSmart: true)
     static let scheduled = ReminderList(id: "smart.scheduled", title: "Scheduled", color: .red, isSmart: true)
+    static let flagged = ReminderList(id: "smart.flagged", title: "Flagged", color: .orange, isSmart: true)
     static let all = ReminderList(id: "smart.all", title: "All", color: .gray, isSmart: true)
-    static let allLists = [today, scheduled, all]
+    static let allLists = [today, scheduled, flagged, all]
 
     /// Smart lists that always sort by due time, then priority.
     static func sortsByTime(_ list: ReminderList) -> Bool {
@@ -76,6 +84,7 @@ struct NewReminder {
     let due: Date?
     let hasTime: Bool
     let priority: Int?
+    let flagged: Bool
     let listID: String?
 }
 

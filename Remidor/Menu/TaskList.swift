@@ -181,7 +181,7 @@ private struct SectionHeader: View {
     var body: some View {
         Button(action: onToggle) {
             HStack(spacing: 6) {
-                Image(systemName: section.list.isSmart ? "sparkles" : "list.bullet")
+                Image(systemName: section.list.symbol)
                     .foregroundStyle(section.list.color)
                 Text(section.list.title).font(.subheadline.weight(.semibold))
                 Text("\(section.items.count)")

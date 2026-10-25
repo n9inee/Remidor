@@ -1,0 +1,44 @@
+//
+//  ReminderEditing.swift
+//  Remidor
+//
+//  Created by n9ine on 23.10.2026.
+//
+
+import EventKit
+import Foundation
+
+/// Changes to a reminder's due date, made through EventKit's public API.
+enum ReminderEditing {
+    /// Sets or clears the due date. A due time gets an alert at that time, like the Reminders app does.
+    /// An alert that sat exactly on the old due time moves with it; any other alert is left alone.
+    nonisolated static func setDue(_ date: Date?, hasTime: Bool, on reminder: EKReminder) {
+        let calendar = Calendar.current
+        if let components = reminder.dueDateComponents, components.hour != nil, let oldDue = calendar.date(from: components) {
+            for alarm in reminder.alarms ?? [] where alarm.absoluteDate == oldDue { reminder.removeAlarm(alarm) }
+        }
+        guard let date else {
+            reminder.dueDateComponents = nil
+            return
+        }
+        let parts: Set<Calendar.Component> = hasTime ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day]
+        reminder.dueDateComponents = calendar.dateComponents(parts, from: date)
+        if hasTime { reminder.addAlarm(EKAlarm(absoluteDate: date)) }
+    }
+
+    /// The same time of day on another day. A reminder without a time simply gets the new day.
+    nonisolated static func moving(_ due: Date?, hasTime: Bool, toDay day: Date) -> (date: Date, hasTime: Bool) {
+        let calendar = Calendar.current
+        guard hasTime, let due else { return (calendar.startOfDay(for: day), false) }
+        let time = calendar.dateComponents([.hour, .minute], from: due)
+        let moved = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: day)
+        return (moved ?? day, true)
+    }
+
+    /// A sensible time to start from when a date gets a time for the first time: the next full hour.
+    nonisolated static func defaultTime(on day: Date, now: Date = Date()) -> Date {
+        let calendar = Calendar.current
+        let nextHour = min(calendar.component(.hour, from: now) + 1, 23)
+        return calendar.date(bySettingHour: nextHour, minute: 0, second: 0, of: day) ?? day
+    }
+}

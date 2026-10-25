@@ -8,10 +8,11 @@
 import EventKit
 import Foundation
 
-/// Sub-tasks and tags aren't part of EventKit's public API. Every `EKReminder` wraps a ReminderKit
+/// Sub-tasks, tags and flags aren't part of EventKit's public API. Every `EKReminder` wraps a ReminderKit
 /// object, reachable through the `backingObject` / `REMObject` keys, that knows its parent reminder
-/// and its hashtags. All lookups are defensive: when a key is missing, a reminder simply counts as
-/// a top-level, untagged task.
+/// and its hashtags, and a flag. Reading is defensive: when a key is missing, a reminder simply counts
+/// as a top-level, untagged, unflagged task. Writing a flag goes through ReminderKit's own save request,
+/// the same path EventKit uses to save a reminder.
 enum ReminderKit {
     nonisolated private static func object(_ owner: NSObject, _ key: String) -> NSObject? {
         guard owner.responds(to: NSSelectorFromString(key)) else { return nil }
@@ -42,6 +43,37 @@ enum ReminderKit {
         let key = String(description[range]).uppercased()
         guard key != reminder.calendarItemIdentifier.uppercased() else { return nil }
         return known[key]
+    }
+
+    /// Whether the reminder is flagged in the Reminders app.
+    nonisolated static func isFlagged(_ reminder: EKReminder) -> Bool {
+        guard let rem = reminderObject(of: reminder),
+              let context = object(rem, "flaggedContext"),
+              context.responds(to: NSSelectorFromString("flagged")) else { return false }
+        return (context.value(forKey: "flagged") as? Bool) ?? false
+    }
+
+    /// Flags or unflags a reminder that has already been saved. Returns false if that wasn't possible.
+    nonisolated static func setFlagged(_ flagged: Bool, for reminder: EKReminder, in store: EKEventStore) -> Bool {
+        guard let rem = reminderObject(of: reminder),
+              let reminderStore = object(store, "reminderStore"),
+              let remStore = object(reminderStore, "remStore"),
+              let requestClass = NSClassFromString("REMSaveRequest") as? NSObject.Type,
+              let allocated = requestClass.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject,
+              allocated.responds(to: NSSelectorFromString("initWithStore:")),
+              let request = allocated.perform(NSSelectorFromString("initWithStore:"), with: remStore)?.takeUnretainedValue() as? NSObject,
+              request.responds(to: NSSelectorFromString("updateReminder:")),
+              let change = request.perform(NSSelectorFromString("updateReminder:"), with: rem)?.takeUnretainedValue() as? NSObject,
+              let context = object(change, "flaggedContext"),
+              context.responds(to: NSSelectorFromString("setFlagged:")) else { return false }
+
+        context.setValue(flagged, forKey: "flagged")
+
+        let save = NSSelectorFromString("saveSynchronouslyWithError:")
+        guard request.responds(to: save), let implementation = request.method(for: save) else { return false }
+        typealias SaveFunction = @convention(c) (AnyObject, Selector, UnsafeMutablePointer<NSError?>) -> Bool
+        var error: NSError?
+        return unsafeBitCast(implementation, to: SaveFunction.self)(request, save, &error)
     }
 
     /// The reminder's tags, sorted by name.

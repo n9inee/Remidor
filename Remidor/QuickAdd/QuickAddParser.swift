@@ -7,10 +7,10 @@
 
 import Foundation
 
-/// Turns "call mom fri at 5pm !!! ~Family #phone" into a title, due date, priority and list, and
+/// Turns "call mom fri at 5pm !!! * ~Family #phone" into a title, due date, priority, flag and list, and
 /// reports where each recognized piece sits in the input so the UI can highlight it.
 enum QuickAddParser {
-    enum Kind { case date, priority, list, tag }
+    enum Kind { case date, priority, flag, list, tag }
 
     struct Token {
         let range: NSRange   // UTF-16 range in the original input
@@ -20,6 +20,7 @@ enum QuickAddParser {
     struct Result {
         var title = ""
         var priority: Int?      // EventKit scale: 1 high, 5 medium, 9 low
+        var flagged = false
         var listName: String?   // canonical name of the matched list
         var due: Date?
         var hasTime = false
@@ -60,6 +61,12 @@ enum QuickAddParser {
         for match in matches(#"(?<!\S)!{1,3}(?!\S)"#, in: masked as String) {
             result.priority = match.range.length >= 3 ? 1 : match.range.length == 2 ? 5 : 9
             claim(match.range, .priority, strip: true)
+        }
+
+        // A standalone * flags the reminder.
+        for match in matches(#"(?<!\S)\*(?!\S)"#, in: masked as String) {
+            result.flagged = true
+            claim(match.range, .flag, strip: true)
         }
 
         if let found = parseRelativeDate(in: masked as String) ?? parseDate(in: masked) {
@@ -182,9 +189,9 @@ enum QuickAddParser {
 
     // MARK: Autocomplete
 
-    /// The `~list` or `#tag` being typed at the end of the input, if any.
+    /// The `~list`, `#tag` or `*` being typed at the end of the input, if any.
     static func activeToken(in input: String) -> (trigger: Character, query: String, range: Range<String.Index>)? {
-        guard let match = matches(#"(?<!\S)([~#])("[^"]*|[^\s"]*)$"#, in: input).first,
+        guard let match = matches(#"(?<!\S)([~#*])("[^"]*|[^\s"]*)$"#, in: input).first,
               let range = Range(match.range, in: input),
               let trigger = group(match, 1, in: input as NSString)?.first else { return nil }
         let query = (group(match, 2, in: input as NSString) ?? "").replacingOccurrences(of: "\"", with: "")

@@ -7,11 +7,10 @@
 
 import SwiftUI
 
-/// The date, priority and list buttons under the quick-add box, plus tag chips and the date picker.
+/// The date, priority, flag and list buttons under the quick-add box, plus tag chips and the date picker.
 struct QuickAddControls: View {
     @Bindable var draft: QuickAddDraft
     @Binding var showCalendar: Bool
-    let onAdd: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -38,9 +37,17 @@ struct QuickAddControls: View {
                 Button("Medium  !!") { draft.setPriority(5) }
                 Button("High  !!!") { draft.setPriority(1) }
             } label: {
-                Chip(icon: "flag.fill", label: priorityLabel, active: draft.priority != nil)
+                Chip(icon: draft.priority == nil ? "exclamationmark.2" : nil, label: priorityLabel, active: draft.priority != nil)
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .help("Priority")
+
+            Button { draft.toggleFlag() } label: {
+                Chip(icon: draft.flagged ? "flag.fill" : "flag", label: "", active: draft.flagged, tint: .orange)
+            }
+            .buttonStyle(.plain)
+            .help(draft.flagged ? "Remove the flag" : "Flag this reminder")
+            .accessibilityLabel(draft.flagged ? "Remove the flag" : "Flag this reminder")
 
             Menu {
                 ForEach(draft.realLists) { list in
@@ -58,9 +65,6 @@ struct QuickAddControls: View {
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
 
             Spacer(minLength: 0)
-            Button("Add", action: onAdd)
-                .controlSize(.small)
-                .disabled(draft.title.isEmpty)
         }
     }
 
@@ -119,26 +123,27 @@ struct QuickAddControls: View {
         case 1: "!!!"
         case 5: "!!"
         case 9: "!"
-        default: "Priority"
+        default: ""
         }
     }
 }
 
-/// A small rounded label such as "Tomorrow, 8:00 PM".
+/// A small rounded label such as "Tomorrow, 8:00 PM". Without a label it is just an icon.
 private struct Chip: View {
-    let icon: String
+    let icon: String?
     let label: String
     let active: Bool
+    var tint: Color = .accentColor
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: icon).symbolEffect(.bounce, options: .speed(0.5), value: label)
-            Text(label).lineLimit(1).contentTransition(.interpolate)
+            if let icon { Image(systemName: icon).symbolEffect(.bounce, options: .speed(0.5), value: active) }
+            if !label.isEmpty { Text(label).lineLimit(1).contentTransition(.interpolate) }
         }
         .font(.caption)
-        .foregroundStyle(active ? Color.accentColor : .secondary)
+        .foregroundStyle(active ? tint : .secondary)
         .padding(.horizontal, 8).padding(.vertical, 3)
-        .background(Capsule().fill(active ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.08)))
+        .background(Capsule().fill(active ? tint.opacity(0.15) : Color.primary.opacity(0.08)))
         .animation(.snappy(duration: 0.4), value: active)
     }
 }

@@ -17,6 +17,7 @@ final class QuickAddDraft {
         let label: String
         var listID: String?
         var tag: String?
+        var flag = false
         var id: String { label }
     }
 
@@ -31,6 +32,7 @@ final class QuickAddDraft {
     var pickedDate: Date?
     var pickedHasTime = false
     var pickedPriority: Int?
+    var pickedFlag = false
     var pickedListID: String?
     var pickedTags: [String] = []
 
@@ -45,6 +47,7 @@ final class QuickAddDraft {
     var due: Date? { parsed.due ?? pickedDate }
     var hasTime: Bool { parsed.due != nil ? parsed.hasTime : pickedHasTime }
     var priority: Int? { parsed.priority ?? pickedPriority }
+    var flagged: Bool { parsed.flagged || pickedFlag }
 
     var list: ReminderList? {
         let lists = realLists
@@ -56,7 +59,7 @@ final class QuickAddDraft {
     var request: NewReminder? {
         guard !title.isEmpty else { return nil }
         let fullTitle = ([title] + pickedTags.map { "#" + $0 }).joined(separator: " ")
-        return NewReminder(title: fullTitle, due: due, hasTime: hasTime, priority: priority, listID: list?.id)
+        return NewReminder(title: fullTitle, due: due, hasTime: hasTime, priority: priority, flagged: flagged, listID: list?.id)
     }
 
     /// Call when the available lists change, since list names are part of the parse.
@@ -69,6 +72,7 @@ final class QuickAddDraft {
         pickedDate = nil
         pickedHasTime = false
         pickedPriority = nil
+        pickedFlag = false
         pickedListID = nil
         pickedTags = []
     }
@@ -79,6 +83,9 @@ final class QuickAddDraft {
     var suggestions: [Suggestion] {
         guard let token = QuickAddParser.activeToken(in: text) else { return [] }
         let query = token.query.lowercased()
+        if token.trigger == "*" {
+            return query.isEmpty && !pickedFlag ? [Suggestion(label: "Flag", flag: true)] : []
+        }
         if token.trigger == "~" {
             return realLists
                 .filter { query.isEmpty || $0.title.lowercased().contains(query) }
@@ -103,6 +110,7 @@ final class QuickAddDraft {
         text = text.trimmingCharacters(in: .whitespaces)
         if let id = suggestion.listID { pickedListID = id }
         if let tag = suggestion.tag, !pickedTags.contains(tag) { pickedTags.append(tag) }
+        if suggestion.flag { pickedFlag = true }
     }
 
     /// Turns everything recognized in the text (date, priority, list, tags) into chips. A newly typed
@@ -112,6 +120,7 @@ final class QuickAddDraft {
         guard !result.tokens.isEmpty else { return false }
         if let date = result.due { pickedDate = date; pickedHasTime = result.hasTime }
         if let priority = result.priority { pickedPriority = priority }
+        if result.flagged { pickedFlag = true }
         if let name = result.listName, let match = realLists.first(where: { $0.title == name }) { pickedListID = match.id }
 
         let nsText = text as NSString
@@ -147,6 +156,13 @@ final class QuickAddDraft {
     func setPriority(_ priority: Int?) {
         removeTokens(of: .priority)
         pickedPriority = priority
+    }
+
+    /// The flag button: flags the reminder, or removes the flag (typed `*` included).
+    func toggleFlag() {
+        let wasFlagged = flagged
+        removeTokens(of: .flag)
+        pickedFlag = !wasFlagged
     }
 
     func setList(_ id: String) {

@@ -46,7 +46,7 @@ struct QuickAddView: View {
             }
 
             // Always shown, so the box keeps its size when the first character is typed.
-            QuickAddControls(draft: draft, showCalendar: $showCalendar, onAdd: submit)
+            QuickAddControls(draft: draft, showCalendar: $showCalendar)
 
             if !rows.isEmpty {
                 Divider().padding(.vertical, 2)
@@ -111,15 +111,23 @@ struct QuickAddView: View {
                 onMove: move
             )
             .frame(maxWidth: .infinity)
+            if !draft.title.isEmpty {
+                Button("Add", action: submit)
+                    .controlSize(.small)
+                    .transition(.opacity)
+            }
         }
+        .frame(height: 22)
         .padding(.horizontal, 8).padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 7).fill(.quaternary))
+        .animation(.snappy(duration: 0.3), value: draft.title.isEmpty)
     }
 
     private func color(for token: QuickAddParser.Token) -> NSColor {
         switch token.kind {
         case .date: .systemBlue
         case .priority: .systemOrange
+        case .flag: .systemYellow
         case .tag: .systemPurple
         case .list: draft.list.map { NSColor($0.color) } ?? .systemGreen
         }

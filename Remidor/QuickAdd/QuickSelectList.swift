@@ -80,6 +80,9 @@ private struct QuickRowView: View {
                 Text(rowTitle(item, markColor: selected ? .white : item.listColor))
                     .lineLimit(1).truncationMode(.tail).foregroundStyle(primary)
                 Spacer(minLength: 0)
+                if item.isFlagged {
+                    Image(systemName: "flag.fill").font(.caption).foregroundStyle(selected ? .white : .orange)
+                }
                 if let due = dueText(item) {
                     Text(due)
                         .font(.caption)
