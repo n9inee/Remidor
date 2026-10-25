@@ -16,5 +16,8 @@ enum DefaultsKey {
     static let listOrder = "listOrder"
     static let collapsedLists = "collapsedListIDs"
     static let dropdownMaxHeight = "dropdownMaxHeight"
+    static let checkForUpdates = "checkForUpdates"
+    static let lastUpdateCheck = "lastUpdateCheck"
+    static let dismissedUpdate = "dismissedUpdateVersion"
     static let quickAddShortcut = "quickAddShortcut"
 }

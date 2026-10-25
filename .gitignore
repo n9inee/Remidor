@@ -15,3 +15,6 @@ xcuserdata/
 # Swift Package Manager
 .build/
 .swiftpm/
+
+# Demo video: attach it to a release or upload it elsewhere instead of committing it
+docs/*.mp4

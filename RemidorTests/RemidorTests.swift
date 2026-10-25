@@ -184,3 +184,51 @@ struct FormattingTests {
         #expect(describeDue(today, hasTime: true).hasPrefix("Today, "))
     }
 }
+
+@MainActor
+struct UpdateCheckerTests {
+    @Test func versionsCompareNumberByNumber() {
+        #expect(UpdateChecker.isNewer("1.1.0", than: "1.0.0"))
+        #expect(UpdateChecker.isNewer("1.10", than: "1.9"))
+        #expect(UpdateChecker.isNewer("2", than: "1.9.9"))
+        #expect(UpdateChecker.isNewer("v1.2.0", than: "1.1.9"))
+        #expect(!UpdateChecker.isNewer("1.0.0", than: "1.0"))
+        #expect(!UpdateChecker.isNewer("1.0.0", than: "1.0.0"))
+        #expect(!UpdateChecker.isNewer("1.0", than: "1.1"))
+        #expect(!UpdateChecker.isNewer("garbage", than: "1.0"))
+    }
+
+    @Test func suffixIsIgnored() {
+        #expect(!UpdateChecker.isNewer("1.1.0-beta1", than: "1.1.0"))
+        #expect(UpdateChecker.isNewer("1.2.0-beta1", than: "1.1.0"))
+    }
+
+    private func json(tag: String, url: String, draft: Bool = false, prerelease: Bool = false) -> Data {
+        Data(#"{"tag_name":"\#(tag)","html_url":"\#(url)","draft":\#(draft),"prerelease":\#(prerelease),"extra":1}"#.utf8)
+    }
+
+    @Test func readsAReleaseFromThisRepository() {
+        let url = "https://github.com/\(UpdateChecker.repository)/releases/tag/v1.2.0"
+        let update = UpdateChecker.parse(json(tag: "v1.2.0", url: url))
+        #expect(update?.version == "1.2.0")
+        #expect(update?.url.absoluteString == url)
+    }
+
+    @Test func ignoresDraftsAndPrereleases() {
+        let url = "https://github.com/\(UpdateChecker.repository)/releases/tag/v1.2.0"
+        #expect(UpdateChecker.parse(json(tag: "v1.2.0", url: url, draft: true)) == nil)
+        #expect(UpdateChecker.parse(json(tag: "v1.2.0", url: url, prerelease: true)) == nil)
+    }
+
+    @Test func refusesLinksToOtherPlaces() {
+        #expect(UpdateChecker.parse(json(tag: "v9.0", url: "https://evil.example.com/download")) == nil)
+        #expect(UpdateChecker.parse(json(tag: "v9.0", url: "https://github.com/someone-else/Remidor/releases/tag/v9.0")) == nil)
+        #expect(UpdateChecker.parse(json(tag: "v9.0", url: "http://github.com/\(UpdateChecker.repository)/releases")) == nil)
+    }
+
+    @Test func survivesGarbage() {
+        #expect(UpdateChecker.parse(Data()) == nil)
+        #expect(UpdateChecker.parse(Data("not json".utf8)) == nil)
+        #expect(UpdateChecker.parse(Data(#"{"message":"Not Found"}"#.utf8)) == nil)
+    }
+}

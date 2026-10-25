@@ -134,7 +134,7 @@ Completing a task shows a banner with an **Undo** button for ten seconds, both i
   <img src="docs/images/settings.png" alt="The Settings window" width="560">
 </p>
 
-- **General.** *Open Remidor at login* starts the app when you log in. It also appears under System Settings → General → Login Items, and if macOS needs your approval the switch shows a button that opens that pane.
+- **General.** *Check for updates* looks at GitHub about once a day and shows a banner in the dropdown when a newer release exists (see [Updating](#updating)). *Open Remidor at login* starts the app when you log in. It also appears under System Settings → General → Login Items, and if macOS needs your approval the switch shows a button that opens that pane.
 - **Lists.** Choose which lists (and smart lists) appear, drag to reorder, and click the star to make a list the default for new reminders. Click the filled star again to go back to automatic.
 - **Sorting.** Due date, priority, title or creation date.
 - **Timer.** The default duration.
@@ -161,6 +161,16 @@ xattr -dr com.apple.quarantine /Applications/Remidor.app
 
 Each release also has a `.sha256` file if you'd like to check the download.
 
+### Updating
+
+Remidor checks GitHub about once a day for a newer release. When there is one, the dropdown shows a banner with a **View** button that opens the release page. Nothing is downloaded or installed automatically: download the new zip, replace the app in your Applications folder and open it. Your settings are kept, because macOS stores them by the app's bundle ID and not inside the app file. You can turn the check off, or run it by hand, in Settings → General.
+
+<p align="center">
+  <img src="docs/images/update.png" alt="The update banner at the bottom of the dropdown" width="340">
+</p>
+
+Since each release is a new build to macOS, expect the Open Anyway step and the Reminders prompt once more after an update.
+
 ### Build from source
 
 Remidor is built with SwiftUI and has no dependencies.
@@ -183,7 +193,7 @@ git tag v1.0.0 && git push origin v1.0.0
 
 ## Privacy
 
-Everything stays on your Mac. Remidor reads and changes reminders through Apple's EventKit framework, makes no network connections of its own and has no analytics. It runs in the App Sandbox, with access to Reminders as its only extra permission.
+Everything stays on your Mac. Remidor reads and changes reminders through Apple's EventKit framework and has no analytics. The only network request it makes is the optional update check, which asks GitHub for the latest release of this project. The request carries only the app's name and version, keeps no cookies or cache, and says nothing about you or your reminders. GitHub sees your IP address, as any website does. You can turn it off in Settings. Remidor runs in the App Sandbox, with access to Reminders and to the network (for that check) as its only extra permissions.
 
 ## How it works, and its limits
 

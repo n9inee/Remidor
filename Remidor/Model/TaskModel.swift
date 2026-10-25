@@ -209,6 +209,8 @@ final class TaskModel {
                     continuation.resume(returning: nil)
                     return
                 }
+                let known = Dictionary(all.map { ($0.calendarItemIdentifier.uppercased(), $0.calendarItemIdentifier) },
+                                       uniquingKeysWith: { first, _ in first })
                 continuation.resume(returning: all.map { r in
                     ReminderItem(
                         id: r.calendarItemIdentifier,
@@ -224,7 +226,7 @@ final class TaskModel {
                         notes: r.notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                         url: r.url,
                         tags: ReminderKit.tags(of: r),
-                        parentID: ReminderKit.parentIdentifier(of: r, among: all)
+                        parentID: ReminderKit.parentIdentifier(of: r, known: known)
                     )
                 })
             }
@@ -412,9 +414,9 @@ final class TaskModel {
         pendingRemovals[item.id] = nil
         if let reminder = reminder(withID: item.id) {
             reminder.isCompleted = false
-            if !save(reminder, action: "undo") { report("Couldn't undo — “\(item.title)” couldn't be restored.") }
+            if !save(reminder, action: "undo") { report("Couldn't restore “\(item.title)”.") }
         } else {
-            report("Couldn't undo — “\(item.title)” no longer exists.")
+            report("Couldn't restore “\(item.title)”. It no longer exists.")
         }
         scheduleRefresh()
     }

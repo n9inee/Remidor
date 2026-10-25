@@ -22,8 +22,14 @@ enum ReminderKit {
         object(reminder, "backingObject").flatMap { object($0, "REMObject") }
     }
 
-    /// The `calendarItemIdentifier` of the reminder's parent, if it is a sub-task of one in `all`.
-    nonisolated static func parentIdentifier(of reminder: EKReminder, among all: [EKReminder]) -> String? {
+    /// A UUID, as it appears in a ReminderKit object ID.
+    nonisolated private static let uuidPattern = try? NSRegularExpression(
+        pattern: "[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}")
+
+    /// The `calendarItemIdentifier` of the reminder's parent, if that parent was fetched too.
+    /// `known` maps every fetched identifier, upper-cased, to its original spelling, which keeps the
+    /// lookup quick for long lists.
+    nonisolated static func parentIdentifier(of reminder: EKReminder, known: [String: String]) -> String? {
         guard let rem = reminderObject(of: reminder),
               let parent = object(rem, "parentReminder"),
               parent.responds(to: NSSelectorFromString("remObjectID")),
@@ -31,7 +37,11 @@ enum ReminderKit {
         // The object ID reads like x-apple-reminderkit://REMCDReminder/<UUID>, and the UUID is the
         // parent's calendarItemIdentifier.
         let description = "\(parentObjectID)"
-        return all.first { $0 !== reminder && description.contains($0.calendarItemIdentifier) }?.calendarItemIdentifier
+        guard let match = uuidPattern?.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)),
+              let range = Range(match.range, in: description) else { return nil }
+        let key = String(description[range]).uppercased()
+        guard key != reminder.calendarItemIdentifier.uppercased() else { return nil }
+        return known[key]
     }
 
     /// The reminder's tags, sorted by name.

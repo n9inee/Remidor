@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Register the global shortcut once the app is fully running.
         HotKeyManager.shared.start { QuickAddPanelController.shared.toggle(model: TaskModel.shared) }
+        UpdateChecker.shared.start()
     }
 }
 

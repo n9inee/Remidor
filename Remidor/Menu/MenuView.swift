@@ -12,6 +12,7 @@ struct MenuView: View {
     let model: TaskModel
     @Environment(\.openWindow) private var openWindow
     @State private var minutes = 30
+    @State private var updates = UpdateChecker.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -26,6 +27,7 @@ struct MenuView: View {
         .animation(.snappy(duration: 0.5), value: model.phase)
         .animation(.snappy(duration: 0.5), value: model.undoBannerItem?.id)
         .animation(.snappy(duration: 0.5), value: model.errorMessage)
+        .animation(.snappy(duration: 0.5), value: updates.availableUpdate)
         .onAppear { model.scheduleRefresh() }
     }
 
@@ -47,6 +49,10 @@ struct MenuView: View {
                 }
                 if let message = model.errorMessage {
                     ErrorBanner(message: message, onDismiss: model.dismissError)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                if let update = updates.availableUpdate {
+                    UpdateBanner(update: update, onDismiss: updates.dismissBanner)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }

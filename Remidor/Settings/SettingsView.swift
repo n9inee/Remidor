@@ -11,12 +11,19 @@ struct SettingsView: View {
     @Bindable var model: TaskModel
     @State private var hotKey = HotKeyManager.shared
     @State private var launchAtLogin = LaunchAtLogin.shared
+    @State private var updates = UpdateChecker.shared
     @State private var leftColumnHeight: CGFloat = 0
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 14) {
-                GroupBox("General") { launchAtLoginRow }
+                GroupBox("General") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        launchAtLoginRow
+                        Divider()
+                        updatesRow
+                    }
+                }
                 GroupBox("Sorting") {
                     Picker("Sort tasks by", selection: $model.sortOrder) {
                         ForEach(SortOrder.allCases) { Text($0.label).tag($0) }
@@ -60,6 +67,39 @@ struct SettingsView: View {
         // The setting can also be changed in System Settings, so look again when coming back to the app.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             launchAtLogin.refresh()
+        }
+    }
+
+    private var updatesRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Check for updates", isOn: $updates.isEnabled)
+            HStack(spacing: 8) {
+                Button("Check now") { Task { await updates.checkNow() } }
+                    .controlSize(.small)
+                    .disabled(updates.status == .checking)
+                updateStatus
+            }
+            Text("Remidor \(UpdateChecker.currentVersion). Looks at GitHub about once a day and never installs anything by itself.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(6)
+    }
+
+    @ViewBuilder private var updateStatus: some View {
+        switch updates.status {
+        case .idle:
+            EmptyView()
+        case .checking:
+            ProgressView().controlSize(.small)
+        case .upToDate:
+            Label("Up to date", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+        case .available(let update):
+            Button("\(update.version) is available") { NSWorkspace.shared.open(update.url) }
+                .buttonStyle(.link).font(.caption)
+        case .failed:
+            Label("Couldn't check", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
         }
     }
 
