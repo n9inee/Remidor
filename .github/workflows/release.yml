@@ -1,0 +1,76 @@
+name: Release
+
+# Pushing a tag such as v1.0.0 tests the app, builds it and attaches a zip to a GitHub release.
+# Running the workflow by hand builds the zip and keeps it as a downloadable run artifact instead.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The project opens in Xcode 16 or later. Use the newest stable Xcode installed on the runner.
+      - name: Select the newest Xcode
+        run: |
+          XCODE="$(ls -d /Applications/Xcode*.app | grep -iv beta | sort -V | tail -1)"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: Run unit tests
+        run: >
+          xcodebuild test
+          -project Remidor.xcodeproj
+          -scheme Remidor
+          -only-testing:RemidorTests
+          CODE_SIGNING_ALLOWED=NO
+
+      # A universal build (Apple Silicon and Intel), targeting macOS 14. An ad-hoc signature ("-") needs no
+      # Apple Developer account; users approve the first launch themselves.
+      - name: Build
+        run: >
+          xcodebuild build
+          -project Remidor.xcodeproj
+          -scheme Remidor
+          -configuration Release
+          -derivedDataPath build
+          ARCHS="arm64 x86_64"
+          ONLY_ACTIVE_ARCH=NO
+          ENABLE_CODE_COVERAGE=NO
+          CLANG_COVERAGE_MAPPING=NO
+          CODE_SIGN_IDENTITY="-"
+          CODE_SIGN_STYLE=Manual
+          DEVELOPMENT_TEAM=""
+          CODE_SIGNING_REQUIRED=YES
+          CODE_SIGNING_ALLOWED=YES
+
+      - name: Check the signature
+        run: codesign --verify --deep --strict build/Build/Products/Release/Remidor.app
+
+      - name: Package
+        run: |
+          NAME="Remidor-${GITHUB_REF_NAME//\//-}"
+          ditto -c -k --keepParent build/Build/Products/Release/Remidor.app "$NAME.zip"
+          shasum -a 256 "$NAME.zip" > "$NAME.zip.sha256"
+          echo "ZIP=$NAME.zip" >> "$GITHUB_ENV"
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" --title "Remidor $GITHUB_REF_NAME" --generate-notes
+
+      - name: Keep the zip as a run artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Remidor
+          path: |
+            ${{ env.ZIP }}
+            ${{ env.ZIP }}.sha256
