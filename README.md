@@ -28,7 +28,9 @@ A menu bar companion for the macOS **Reminders** app. See what's open at a glanc
 Click the checklist icon to see your open reminders, grouped by list with a divider and a count for each. Lists use their Reminders colour, priorities show as `!`, `!!` and `!!!`, and overdue dates turn red. The list refreshes when you open it, whenever Reminders changes and every minute, so it stays in step with the Reminders app (and with iCloud).
 
 - **Smart lists.** Today, Scheduled, Flagged and All are available alongside your own lists. Today and Scheduled always sort by due date and time first, then priority.
-- **Sorting.** Everything else sorts by due date, priority, title or creation date, whichever you pick in Settings.
+- **Sorting.** Everything else sorts by due date, priority, title, creation date or **Manual**, whichever you pick in Settings. Manual is the arrangement you made by dragging reminders around in the Reminders app, taken over as it is. You can set one order for every list, or give single lists their own with the arrows next to them in Settings.
+- **Drag and drop.** Pick a reminder up and it follows your mouse. Drop it on the top or bottom edge of another one in the same list to change its place (a line shows where it will land), or on the middle of one to make it that reminder's sub-task. The list scrolls by itself when you carry a reminder to its top or bottom edge. Changing a place switches the list to manual order, so the new position is kept, and it shows up in the Reminders app too. Drop a reminder on another list's name, or on one of its reminders, to move it there; the list's name lights up, not the reminder. It is then sorted like the rest of that list instead of switching it to manual. Dropping on Flagged flags the reminder, dropping on Today makes it due today, and Scheduled and All take nothing.
+- **List sections.** If a list has sections in Reminders (like Food and Clothing in a shopping list), the dropdown shows them as headings in the same order, with each reminder under its section. Click a heading to fold that section away, as in Reminders.
 - **Resizable.** The list is only as tall as it needs to be, so folding every list leaves no scroll bar. Drag the small handle under the list to make it taller or shorter. Double-click it to reset. Remidor remembers the height.
 - **Collapsible lists.** Click a list's header to fold it shut or open it again. Which lists are folded is remembered between launches.
 - **List order.** Drag lists into any order in Settings. That order is used everywhere: the dropdown, the list menus and the quick-select box.
@@ -61,10 +63,13 @@ The box at the top of the dropdown adds reminders to any list, even lists you've
 | Type | Examples | Result |
 | --- | --- | --- |
 | Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `next fri`, `in 20 min`, `in 3 days` | Due date, with an alert when a time is given |
+| Repeat | `every sunday`, `ev day`, `every 2 weeks`, `every other month`, `every mon and thu`, `every weekday` | Repeats, starting on the next matching day |
 | Priority | `!` `!!` `!!!` | Low, medium, high |
 | Flag | `*` | Flags the reminder |
 | List | `~Work`, `~"My List"` | Adds to that list |
 | Tag | `#errands` | Added to the title and highlighted |
+
+`every` can be shortened to `ev`. A repeat keeps its time, so `every tue at 7am` repeats every Tuesday at 7. A repeat button next to the date offers Daily, Weekdays, Weekly, Monthly and Yearly, and the row details show how a reminder repeats. Remidor only changes a repeat when you change it, so complicated repeats made in Reminders stay as they are.
 
 Shorthand such as `tmr`, `tmrw`, `2moro`, `tonite` and `nxt` is understood. A bare hour after `at` is read as 1–6 → pm, 7–11 → am and 12 → noon, so `at 8` means 8 am and `at 4` means 4 pm. Add `am` or `pm` to be explicit.
 
@@ -102,10 +107,11 @@ Press **⌥Space** from anywhere to open a floating box, Spotlight-style, over w
 
 ### Sub-tasks, tags and details
 
-Sub-tasks sit directly under their parent, indented, and Reminders' own tags show under the title in purple. A chevron expands any row to show the notes (links are clickable), the URL, tags and key facts such as list, due date, priority and creation date. Flagged tasks show a small orange flag, and the Flagged smart list collects them. Hovering a long title shows it in full.
+Sub-tasks sit directly under their parent, indented, and Reminders' own tags show under the title in purple. A parent with sub-tasks has a chevron at the right: click it to fold the sub-tasks away or show them again (Remidor remembers which parents are folded). Checking off a parent checks off its open sub-tasks too, and Undo brings them all back. The ⓘ button expands any row to show the notes (links are clickable), the URL, tags and key facts such as list, due date, priority and creation date. Flagged tasks show a small orange flag, and the Flagged smart list collects them. Hovering a long title shows it in full.
 
 <p align="center">
   <img src="docs/images/details.png" alt="An expanded reminder with notes, a link, details and two sub-tasks" width="400">
+  <img src="docs/images/sections.png" alt="A list with two sections, one parent folded and one open" width="400">
 </p>
 
 Click the circle in front of a task to complete it. Click anywhere else on the row to start the timer.
@@ -115,12 +121,15 @@ Click the circle in front of a task to complete it. Click anywhere else on the r
 | Item | What it does |
 | --- | --- |
 | **Open** | Opens the task's list in the Reminders app |
+| **Edit** | Edits the reminder in place, like the quick-add box (see below) |
 | **Date** | Sets the due day to Today, Tomorrow or Next Week (the time of day is kept), or removes the date |
 | **Priority** | Sets None, Low, Medium or High |
 | **Flag** / **Remove Flag** | Flags the task, or takes the flag off |
 | **List** | Moves the task to another list |
 | **Details** | Expands the row |
 | **Delete** | Deletes the reminder, after asking you to confirm |
+
+**Editing.** Hold the title of a reminder for one second (a bar fills up under it), or choose Edit, and the row turns into the quick-add box with the reminder's own values. Change the title, type a date, `!`, `*`, `~List` or `#tag` the way you do when adding, or use the buttons, then press Return or Save. Esc cancels.
 
 <p align="center">
   <img src="docs/images/contextmenu.png" alt="The right-click menu" width="400">
@@ -146,7 +155,7 @@ Completing a task shows a banner with an **Undo** button for ten seconds, both i
 
 - **General.** *Check for updates* looks at GitHub about once a day and shows a banner in the dropdown when a newer release exists (see [Updating](#updating)). *Open Remidor at login* starts the app when you log in. It also appears under System Settings → General → Login Items, and if macOS needs your approval the switch shows a button that opens that pane.
 - **Lists.** Choose which lists (and smart lists) appear, drag to reorder, and click the star to make a list the default for new reminders. Click the filled star again to go back to automatic.
-- **Sorting.** Due date, priority, title or creation date.
+- **Sorting.** Due date, priority, title, creation date or Manual, for all lists or for each list on its own.
 - **Timer.** The default duration.
 - **Shortcuts.** Open the quick bar and the Reminders app from anywhere. Remidor warns you if macOS or another app already uses the combination you chose.
 
@@ -207,7 +216,7 @@ Everything stays on your Mac. Remidor reads and changes reminders through Apple'
 
 ## How it works, and its limits
 
-- **Sub-tasks, tags and flags** aren't part of EventKit's public API. Remidor reads them through undocumented fields on each reminder, and sets flags through the same internal save request EventKit uses (see [`ReminderKit.swift`](Remidor/Model/ReminderKit.swift)). If macOS ever changes them, sub-tasks show as ordinary rows, tags and flags are hidden, flagging shows an error message, and nothing else breaks.
+- **Sub-tasks, tags, flags, manual order and sections** aren't part of EventKit's public API. Remidor reads them through undocumented fields on each reminder and list, and sets flags, the manual order and sub-tasks through the same internal save request EventKit uses (see [`ReminderKit.swift`](Remidor/Model/ReminderKit.swift)). If macOS ever changes them, sub-tasks show as ordinary rows, sections disappear, Manual falls back to sorting by title, tags and flags are hidden, flagging shows an error message, and nothing else breaks. Remidor reads the sections but never changes them, so reminders can't be dragged from one section to another. Dragging changes the manual order through the same internal save request, and a reminder dropped into a list that isn't in manual order lands in the arrangement that list already has behind the scenes, which can differ from what the other sort order showed.
 - **Smart lists.** Apple doesn't expose its smart lists to other apps. Remidor recreates Today, Scheduled and All from due dates. Flagged uses the real flags.
 - **Tags on new reminders.** Apps can't create real Reminders tags, so a `#tag` added in the quick-add box becomes plain text in the title. Existing tags are shown properly.
 - **Opening a list.** "Open" uses Reminders' internal link format and falls back to simply opening the app if that doesn't work.
@@ -218,8 +227,8 @@ Everything stays on your Mac. Remidor reads and changes reminders through Apple'
 ```
 Remidor/
 ├── App/        app entry point and the global-shortcut hookup
-├── Model/      TaskModel (EventKit, timer, undo), value types, sorting, ReminderKit bridge
-├── Menu/       the dropdown: list, rows, timer screens, formatting
+├── Model/      TaskModel (EventKit, timer, undo), value types, sorting, repeats, ReminderKit bridge
+├── Menu/       the dropdown: list, rows, drag and drop, the in-place editor, timer screens, formatting
 ├── QuickAdd/   natural-language parser, draft state, the box, the floating panel
 ├── Settings/   the Settings window and shortcut recorder
 ├── Shared/     DurationPicker
@@ -228,7 +237,7 @@ Remidor/
 
 ## Tests
 
-The natural-language parser, the ordering rules (including sub-task nesting) and the formatting helpers have unit tests in `RemidorTests`. Run them with ⌘U in Xcode, or:
+The natural-language parser (including repeats), the ordering rules (manual order, sections, sub-task nesting and folding) and the formatting helpers have unit tests in `RemidorTests`. Run them with ⌘U in Xcode, or:
 
 ```bash
 xcodebuild test -project Remidor.xcodeproj -scheme Remidor -only-testing:RemidorTests

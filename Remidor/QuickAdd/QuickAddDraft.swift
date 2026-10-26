@@ -5,6 +5,7 @@
 //  Created by n9ine on 23.10.2026.
 //
 
+import AppKit
 import Foundation
 import Observation
 
@@ -35,9 +36,40 @@ final class QuickAddDraft {
     var pickedFlag = false
     var pickedListID: String?
     var pickedTags: [String] = []
+    var pickedRecurrence: Recurrence?
+
+    /// While the text is exactly this, nothing in it counts as typed. Used when editing a reminder, so
+    /// that words in its title, like "at 5", don't change its date until the text is touched.
+    @ObservationIgnored private var untouchedText: String?
 
     init(model: TaskModel) {
         self.model = model
+    }
+
+    /// A draft that starts as an existing reminder.
+    convenience init(editing item: ReminderItem, model: TaskModel) {
+        self.init(model: model)
+        untouchedText = item.title
+        text = item.title
+        pickedDate = item.due
+        pickedHasTime = item.dueHasTime
+        pickedPriority = item.priority == 0 ? nil : item.priority
+        pickedFlag = item.isFlagged
+        pickedListID = item.listID
+        pickedRecurrence = item.recurrence
+        reparse()
+    }
+
+    /// The color a recognized piece of the text is drawn in.
+    func color(for token: QuickAddParser.Token) -> NSColor {
+        switch token.kind {
+        case .date: .systemBlue
+        case .priority: .systemOrange
+        case .flag: .systemYellow
+        case .tag: .systemPurple
+        case .list: list.map { NSColor($0.color) } ?? .systemGreen
+        case .recurrence: .systemTeal
+        }
     }
 
     // MARK: What will be saved
@@ -48,6 +80,7 @@ final class QuickAddDraft {
     var hasTime: Bool { parsed.due != nil ? parsed.hasTime : pickedHasTime }
     var priority: Int? { parsed.priority ?? pickedPriority }
     var flagged: Bool { parsed.flagged || pickedFlag }
+    var recurrence: Recurrence? { parsed.recurrence ?? pickedRecurrence }
 
     var list: ReminderList? {
         let lists = realLists
@@ -56,15 +89,27 @@ final class QuickAddDraft {
         return lists.first { $0.id == model.defaultListID }
     }
 
-    var request: NewReminder? {
+    var request: NewReminder? { request(fallbackTitle: nil) }
+
+    /// What to save. A reminder being edited keeps its old title when the box was emptied.
+    func request(fallbackTitle: String?) -> NewReminder? {
+        let title = title.isEmpty ? (fallbackTitle ?? "") : title
         guard !title.isEmpty else { return nil }
         let fullTitle = ([title] + pickedTags.map { "#" + $0 }).joined(separator: " ")
-        return NewReminder(title: fullTitle, due: due, hasTime: hasTime, priority: priority, flagged: flagged, listID: list?.id)
+        return NewReminder(title: fullTitle, due: due, hasTime: hasTime, priority: priority, flagged: flagged,
+                           listID: list?.id, recurrence: recurrence)
     }
 
     /// Call when the available lists change, since list names are part of the parse.
     func reparse() {
-        parsed = QuickAddParser.parse(text, listNames: realLists.map(\.title))
+        if text == untouchedText {
+            // The title as it is, with nothing in it read as a date, priority or the like.
+            var untouched = QuickAddParser.Result()
+            untouched.title = text
+            parsed = untouched
+        } else {
+            parsed = QuickAddParser.parse(text, listNames: realLists.map(\.title))
+        }
     }
 
     func reset() {
@@ -75,6 +120,7 @@ final class QuickAddDraft {
         pickedFlag = false
         pickedListID = nil
         pickedTags = []
+        pickedRecurrence = nil
     }
 
     // MARK: Autocomplete
@@ -121,6 +167,7 @@ final class QuickAddDraft {
         if let date = result.due { pickedDate = date; pickedHasTime = result.hasTime }
         if let priority = result.priority { pickedPriority = priority }
         if result.flagged { pickedFlag = true }
+        if let recurrence = result.recurrence { pickedRecurrence = recurrence }
         if let name = result.listName, let match = realLists.first(where: { $0.title == name }) { pickedListID = match.id }
 
         let nsText = text as NSString
@@ -165,6 +212,16 @@ final class QuickAddDraft {
         pickedFlag = !wasFlagged
     }
 
+    /// The repeat button. A repeat needs a date to start from, so today is used when there is none.
+    func setRecurrence(_ recurrence: Recurrence?) {
+        takeOverTypedDate()
+        removeTokens(of: .recurrence)
+        pickedRecurrence = recurrence
+        guard let recurrence else { return }
+        let start = due ?? Calendar.current.startOfDay(for: Date())
+        pickedDate = recurrence.firstOccurrence(onOrAfter: start, hasTime: hasTime)
+    }
+
     func setList(_ id: String) {
         removeTokens(of: .list)
         pickedListID = id
@@ -183,8 +240,10 @@ final class QuickAddDraft {
     }
 
     private func removeTokens(where isIncluded: (QuickAddParser.Token) -> Bool) {
+        let targets = parsed.tokens.filter(isIncluded)
+        guard !targets.isEmpty else { return }
         let remaining = NSMutableString(string: text)
-        for token in parsed.tokens.filter(isIncluded).sorted(by: { $0.range.location > $1.range.location }) {
+        for token in targets.sorted(by: { $0.range.location > $1.range.location }) {
             remaining.replaceCharacters(in: token.range, with: "")
         }
         text = (remaining as String).split(whereSeparator: \.isWhitespace).joined(separator: " ")

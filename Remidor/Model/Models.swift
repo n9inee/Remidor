@@ -17,6 +17,7 @@ struct ReminderItem: Identifiable, Equatable {
     var due: Date?
     var dueHasTime = false          // false for date-only reminders
     var isRepeating = false         // completing a repeating reminder moves it to its next date instead
+    var recurrence: Recurrence?     // how it repeats, when that fits the shapes Remidor knows
     var isFlagged = false
     var priority = 0                // EventKit scale: 0 none, 1-4 high, 5 medium, 6-9 low
     var created: Date?
@@ -25,6 +26,11 @@ struct ReminderItem: Identifiable, Equatable {
     var tags: [String] = []         // Reminders tags, without the leading #
     var parentID: String?           // id of the parent reminder, for sub-tasks
     var depth = 0                   // 0 = top level, 1 = sub-task
+    var childCount = 0              // open sub-tasks directly below this reminder
+    var manualIndex = Int.max       // position in the list's own arrangement in Reminders
+    var sectionIndex = -1           // position of the list section it sits in, -1 for none
+    var sectionTitle: String?       // name of that section
+    var sectionID: String?          // identifies that section
 
     /// Lower sorts first; reminders without a priority come last.
     var priorityRank: Int { priority == 0 ? 10 : priority }
@@ -64,12 +70,13 @@ enum SmartList {
 }
 
 enum SortOrder: String, CaseIterable, Identifiable {
-    case dueDate, priority, title, creationDate
+    case manual, dueDate, priority, title, creationDate
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .manual: "Manual"
         case .dueDate: "Due date"
         case .priority: "Priority"
         case .title: "Title"
@@ -86,6 +93,7 @@ struct NewReminder {
     let priority: Int?
     let flagged: Bool
     let listID: String?
+    var recurrence: Recurrence?
 }
 
 /// The focus-timer flow shown in the menu bar.

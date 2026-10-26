@@ -103,7 +103,7 @@ struct QuickAddView: View {
                 text: $draft.text,
                 placeholder: "Add a new Reminder! e. g. Call mom at 8pm tmrw !!!",
                 tokens: draft.parsed.tokens,
-                color: color(for:),
+                color: draft.color(for:),
                 focusTrigger: focusTrigger,
                 onSubmit: submit,
                 onShiftSubmit: completeHighlighted,
@@ -121,16 +121,6 @@ struct QuickAddView: View {
         .padding(.horizontal, 8).padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 7).fill(.quaternary))
         .animation(.snappy(duration: 0.3), value: draft.title.isEmpty)
-    }
-
-    private func color(for token: QuickAddParser.Token) -> NSColor {
-        switch token.kind {
-        case .date: .systemBlue
-        case .priority: .systemOrange
-        case .flag: .systemYellow
-        case .tag: .systemPurple
-        case .list: draft.list.map { NSColor($0.color) } ?? .systemGreen
-        }
     }
 
     // MARK: Quick select
@@ -214,7 +204,7 @@ struct QuickAddView: View {
     }
 }
 
-private struct SuggestionList: View {
+struct SuggestionList: View {
     let suggestions: [QuickAddDraft.Suggestion]
     let onSelect: (QuickAddDraft.Suggestion) -> Void
 

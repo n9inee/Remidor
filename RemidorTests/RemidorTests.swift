@@ -158,6 +158,38 @@ struct OrderingTests {
         #expect(items.sortedByDueTime().map(\.id) == ["4", "3", "2", "1"])
     }
 
+    private func placed(_ id: String, manual: Int = .max, section: Int = -1, parent: String? = nil) -> ReminderItem {
+        var item = item(id, id, parent: parent)
+        item.manualIndex = manual
+        item.sectionIndex = section
+        item.sectionTitle = section < 0 ? nil : "Section \(section)"
+        item.sectionID = section < 0 ? nil : "s\(section)"
+        return item
+    }
+
+    @Test func manualOrderFollowsTheListArrangement() {
+        let items = [placed("c", manual: 2), placed("a", manual: 0), placed("z"), placed("b", manual: 1)]
+        #expect(items.sorted(by: .manual).map(\.id) == ["a", "b", "c", "z"])
+    }
+
+    @Test func sectionsGroupItemsAndKeepTheirOrder() {
+        let items = [placed("a", section: 1), placed("b"), placed("c", section: 0), placed("d", section: 1), placed("e")]
+        #expect(items.groupedBySection().map(\.id) == ["b", "e", "c", "a", "d"])
+    }
+
+    @Test func subtasksJoinTheirParentsSection() {
+        let items = [placed("p", section: 2), placed("k", section: 0, parent: "p")]
+        let nested = items.nestingSubtasks()
+        #expect(nested.map(\.id) == ["p", "k"])
+        #expect(nested[1].sectionIndex == 2 && nested[0].childCount == 1)
+    }
+
+    @Test func foldedParentsHideTheirSubtasks() {
+        let nested = [placed("p"), placed("k", parent: "p"), placed("q"), placed("m", parent: "q")].nestingSubtasks()
+        #expect(nested.hidingFoldedSubtasks(["p"]).map(\.id) == ["p", "q", "m"])
+        #expect(nested.hidingFoldedSubtasks([]).count == 4)
+    }
+
     @Test func priorityOrderPutsUnprioritisedLast() {
         let items = [item("1", "A"), item("2", "B", priority: 9), item("3", "C", priority: 1)]
         #expect(items.sorted(by: .priority).map(\.id) == ["3", "2", "1"])
@@ -284,5 +316,59 @@ struct UpdateCheckerTests {
     @Test func movingADateWithoutATimeStaysWithoutOne() {
         let moved = ReminderEditing.moving(nil, hasTime: false, toDay: day(10))
         #expect(!moved.hasTime && Calendar.current.component(.hour, from: moved.date) == 0)
+    }
+}
+
+@MainActor
+struct RecurrenceParsingTests {
+    private func parse(_ text: String) -> QuickAddParser.Result {
+        QuickAddParser.parse(text, listNames: ["Inbox"])
+    }
+
+    @Test func everyWeekdayNameRepeatsWeeklyFromTheNextOne() throws {
+        let result = parse("Water plants every sunday")
+        #expect(result.title == "Water plants")
+        #expect(result.recurrence == Recurrence(frequency: .weekly, weekdays: [1]))
+        let due = try #require(result.due)
+        #expect(Calendar.current.component(.weekday, from: due) == 1)
+        #expect(!result.hasTime)
+        #expect(result.tokens.contains { $0.kind == .recurrence })
+    }
+
+    @Test func evAndOtherShortFormsWork() {
+        #expect(parse("stretch ev day").recurrence == Recurrence(frequency: .daily))
+        #expect(parse("stretch evry week").recurrence == Recurrence(frequency: .weekly))
+        #expect(parse("rent every month").recurrence == Recurrence(frequency: .monthly))
+        #expect(parse("Taxes every year").recurrence == Recurrence(frequency: .yearly))
+    }
+
+    @Test func intervalsAndSeveralDays() {
+        #expect(parse("every 2 weeks").recurrence == Recurrence(frequency: .weekly, interval: 2))
+        #expect(parse("every other day").recurrence == Recurrence(frequency: .daily, interval: 2))
+        #expect(parse("gym every mon and thu").recurrence == Recurrence(frequency: .weekly, weekdays: [2, 5]))
+        #expect(parse("standup every weekday").recurrence == .weekdaysOnly)
+    }
+
+    @Test func aTimeStaysWithTheRepeat() throws {
+        let result = parse("run every tue at 7am")
+        let due = try #require(result.due)
+        #expect(result.hasTime)
+        #expect(Calendar.current.component(.weekday, from: due) == 3)
+        #expect(Calendar.current.component(.hour, from: due) == 7)
+        #expect(result.title == "run")
+    }
+
+    @Test func ordinaryWordsAreLeftAlone() {
+        let result = parse("Charge ev charger")
+        #expect(result.recurrence == nil)
+        #expect(result.title == "Charge ev charger")
+        #expect(parse("every").recurrence == nil)
+    }
+
+    @Test func labelsReadNaturally() {
+        #expect(Recurrence(frequency: .daily).label == "Daily")
+        #expect(Recurrence(frequency: .weekly, weekdays: [1]).label == "Every Sun")
+        #expect(Recurrence.weekdaysOnly.label == "Weekdays")
+        #expect(Recurrence(frequency: .weekly, interval: 2).label == "Every 2 weeks")
     }
 }

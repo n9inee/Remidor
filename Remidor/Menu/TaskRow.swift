@@ -14,16 +14,23 @@ struct TaskRow: View {
     let model: TaskModel
     let start: () -> Void
     let done: () -> Void
-
     @State private var hovering = false
     @State private var expanded = false
     @State private var confirmingDelete = false
+    @State private var editing = false
+    /// True while the title is being held down, to draw the line that fills up.
+    @State private var holding = false
+    /// Set when holding the title opened the editor, so letting go isn't taken as a click.
+    @State private var justEdited = false
 
     private var hasDetails: Bool { item.notes != nil || item.url != nil || !item.tags.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if confirmingDelete {
+            if editing {
+                TaskEditor(item: item, model: model) { editing = false }
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            } else if confirmingDelete {
                 deleteConfirmation
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
             } else {
@@ -41,11 +48,13 @@ struct TaskRow: View {
         .contextMenu { contextMenu }
         .animation(.snappy(duration: 0.4), value: expanded)
         .animation(.snappy(duration: 0.4), value: confirmingDelete)
+        .animation(.snappy(duration: 0.4), value: editing)
         .animation(.snappy(duration: 0.3), value: hovering)
     }
 
     @ViewBuilder private var contextMenu: some View {
         Button("Open") { model.openInReminders(item) }
+        Button("Edit") { editing = true }
         Menu("Date") {
             Button("Today") { model.setDay(item, to: Date()) }
             Button("Tomorrow") { model.setDay(item, to: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()) }
@@ -113,23 +122,25 @@ struct TaskRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 caption
             }
+            // Hold the title for a second to edit the reminder. A bar fills up while you hold.
+            .overlay(alignment: .bottomLeading) { holdProgress }
+            .onLongPressGesture(minimumDuration: 1, maximumDistance: 6) {
+                holding = false
+                justEdited = true
+                editing = true
+                Task { try? await Task.sleep(for: .seconds(0.6)); justEdited = false }
+            } onPressingChanged: { holding = $0 }
             Spacer(minLength: 0)
+            if hasDetails || hovering || expanded { infoButton }
             if item.isFlagged {
                 Image(systemName: "flag.fill").font(.caption).foregroundStyle(.orange)
                     .accessibilityLabel("Flagged")
             }
-            if hovering && !expanded {
-                Image(systemName: "play.fill").font(.caption)
-                    .foregroundStyle(.secondary)
-                    .transition(.scale.combined(with: .opacity))
-            }
-            if hasDetails || hovering || expanded {
-                disclosureButton
-            }
+            if item.childCount > 0 { subtaskToggle }
         }
         .padding(.vertical, 5).padding(.horizontal, 6)
         .contentShape(Rectangle())
-        .onTapGesture(perform: start)
+        .onTapGesture { if !justEdited { start() } }
     }
 
     @ViewBuilder private var caption: some View {
@@ -143,12 +154,45 @@ struct TaskRow: View {
         }
     }
 
-    private var disclosureButton: some View {
-        Button { expanded.toggle() } label: {
+    /// The bar under the title that fills while it is held down.
+    private var holdProgress: some View {
+        Capsule()
+            .fill(Color.primary.opacity(0.12))
+            .frame(height: 3)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(LinearGradient(colors: [Color.accentColor.opacity(0.55), Color.accentColor], startPoint: .leading, endPoint: .trailing))
+                    .scaleEffect(x: holding ? 1 : 0.001, anchor: .leading)
+                    .animation(holding ? .linear(duration: 1) : .easeOut(duration: 0.2), value: holding)
+            }
+            .opacity(holding ? 1 : 0)
+            .offset(y: 5)
+            .animation(.easeOut(duration: 0.15), value: holding)
+            .allowsHitTesting(false)
+    }
+
+    /// Folds the sub-tasks away or brings them back.
+    private var subtaskToggle: some View {
+        let folded = model.collapsedParentIDs.contains(item.id)
+        return Button { withAnimation(.snappy(duration: 0.4)) { model.toggleSubtasks(of: item) } } label: {
             Image(systemName: "chevron.down")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(expanded ? 180 : 0))
+                .rotationEffect(.degrees(folded ? -90 : 0))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(folded ? "Show \(item.childCount) sub-tasks" : "Hide \(item.childCount) sub-tasks")
+        .accessibilityLabel(folded ? "Show \(item.childCount) sub-tasks" : "Hide \(item.childCount) sub-tasks")
+    }
+
+    /// Shows or hides the notes and details.
+    private var infoButton: some View {
+        Button { expanded.toggle() } label: {
+            Image(systemName: expanded ? "info.circle.fill" : "info.circle")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())
         }
@@ -188,6 +232,7 @@ struct TaskDetails: View {
                     fact("Priority", item.priority <= 4 ? "High" : item.priority == 5 ? "Medium" : "Low")
                 }
                 if item.isFlagged { fact("Flag", "Flagged") }
+                if let repeats = item.recurrence { fact("Repeats", repeats.label) }
                 if let created = item.created {
                     fact("Created", created.formatted(date: .abbreviated, time: .omitted))
                 }

@@ -70,6 +70,42 @@ final class TaskModel {
         }
     }
 
+    /// Sort orders chosen for single lists. A list without one follows `sortOrder`.
+    var listSortOrders: [String: SortOrder] = {
+        let saved = UserDefaults.standard.dictionary(forKey: DefaultsKey.listSortOrders) as? [String: String] ?? [:]
+        return saved.compactMapValues(SortOrder.init(rawValue:))
+    }() {
+        didSet {
+            UserDefaults.standard.set(listSortOrders.mapValues(\.rawValue), forKey: DefaultsKey.listSortOrders)
+            scheduleRefresh()
+        }
+    }
+
+    func sortOrder(for list: ReminderList) -> SortOrder { listSortOrders[list.id] ?? sortOrder }
+
+    /// nil goes back to the common order.
+    func setSortOrder(_ order: SortOrder?, for list: ReminderList) {
+        listSortOrders[list.id] = order
+    }
+
+    /// Parents whose sub-tasks are folded away in the dropdown.
+    var collapsedParentIDs = Set(UserDefaults.standard.stringArray(forKey: DefaultsKey.collapsedParents) ?? []) {
+        didSet { UserDefaults.standard.set(Array(collapsedParentIDs), forKey: DefaultsKey.collapsedParents) }
+    }
+
+    /// List sections folded shut in the dropdown.
+    var collapsedSectionIDs = Set(UserDefaults.standard.stringArray(forKey: DefaultsKey.collapsedSections) ?? []) {
+        didSet { UserDefaults.standard.set(Array(collapsedSectionIDs), forKey: DefaultsKey.collapsedSections) }
+    }
+
+    func toggleSection(_ id: String) {
+        if collapsedSectionIDs.contains(id) { collapsedSectionIDs.remove(id) } else { collapsedSectionIDs.insert(id) }
+    }
+
+    func toggleSubtasks(of item: ReminderItem) {
+        if collapsedParentIDs.contains(item.id) { collapsedParentIDs.remove(item.id) } else { collapsedParentIDs.insert(item.id) }
+    }
+
     /// nil until the user chooses; then every regular list is shown and smart lists are opt-in.
     var selectedListIDs: Set<String>? = UserDefaults.standard.stringArray(forKey: DefaultsKey.selectedLists).map(Set.init) {
         didSet {
@@ -102,6 +138,10 @@ final class TaskModel {
     // MARK: Private state
 
     private var fallbackListID: String?
+    /// Every open reminder from the latest fetch, whatever lists are shown. Used to find sub-tasks.
+    @ObservationIgnored private var openItems: [ReminderItem] = []
+    /// The sub-tasks that were completed together with a parent, so undoing the parent brings them back.
+    @ObservationIgnored private var completedSubtasks: [String: [String]] = [:]
     /// Reminders just completed or deleted. They stay hidden until a fetch confirms the change,
     /// so a stale fetch can't bring them back.
     @ObservationIgnored private var pendingRemovals = [String: Date]()
@@ -173,8 +213,18 @@ final class TaskModel {
         let calendars = store.calendars(for: .reminder)
         updateLists(from: calendars)
 
+        // The order and sections the user made in Reminders are only read when something needs them.
+        let selected = lists.filter { isSelected($0) && !$0.isSmart }
+        let needsManual = lists.contains { isSelected($0) && sortOrder(for: $0) == .manual }
+        // Looked up again by identifier, because the list objects can hold on to an older arrangement.
+        let manual = needsManual ? Dictionary(calendars.map { ($0.calendarIdentifier, ReminderKit.manualOrder(of: store.calendar(withIdentifier: $0.calendarIdentifier) ?? $0)) },
+                                              uniquingKeysWith: { first, _ in first }) : [:]
+        let sectionLookups = ReminderKit.sectionLookup(for: calendars.filter { c in selected.contains { $0.id == c.calendarIdentifier } },
+                                                       in: store)
+
         // If the fetch fails, keep showing what is already there instead of an empty list.
-        guard let items = await fetchIncomplete(in: calendars) else { return }
+        guard let items = await fetchIncomplete(in: calendars, manual: manual, sections: sectionLookups) else { return }
+        openItems = items
 
         // Drop a pending removal once a fetch no longer returns the reminder, or after 10 seconds.
         let fetchedIDs = Set(items.map(\.id))
@@ -200,7 +250,8 @@ final class TaskModel {
             .map(\.element)
     }
 
-    private func fetchIncomplete(in calendars: [EKCalendar]) async -> [ReminderItem]? {
+    private func fetchIncomplete(in calendars: [EKCalendar], manual: [String: [String: Int]],
+                                 sections: [String: ReminderKit.SectionLookup]) async -> [ReminderItem]? {
         let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
         return await withCheckedContinuation { continuation in
             store.fetchReminders(matching: predicate) { reminders in
@@ -212,7 +263,8 @@ final class TaskModel {
                 let known = Dictionary(all.map { ($0.calendarItemIdentifier.uppercased(), $0.calendarItemIdentifier) },
                                        uniquingKeysWith: { first, _ in first })
                 continuation.resume(returning: all.map { r in
-                    ReminderItem(
+                    let section = sections[r.calendar.calendarIdentifier]?.section(of: r)
+                    return ReminderItem(
                         id: r.calendarItemIdentifier,
                         title: r.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Untitled",
                         listID: r.calendar.calendarIdentifier,
@@ -221,13 +273,18 @@ final class TaskModel {
                         due: r.dueDateComponents.flatMap { Calendar.current.date(from: $0) },
                         dueHasTime: r.dueDateComponents?.hour != nil,
                         isRepeating: r.hasRecurrenceRules,
+                        recurrence: r.recurrenceRules?.first.flatMap(Recurrence.init(rule:)),
                         isFlagged: ReminderKit.isFlagged(r),
                         priority: r.priority,
                         created: r.creationDate,
                         notes: r.notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                         url: r.url,
                         tags: ReminderKit.tags(of: r),
-                        parentID: ReminderKit.parentIdentifier(of: r, known: known)
+                        parentID: ReminderKit.parentIdentifier(of: r, known: known),
+                        manualIndex: manual[r.calendar.calendarIdentifier]?[r.calendarItemIdentifier.uppercased()] ?? .max,
+                        sectionIndex: section?.index ?? -1,
+                        sectionTitle: section?.title,
+                        sectionID: section?.id
                     )
                 })
             }
@@ -247,7 +304,21 @@ final class TaskModel {
             default: byList[list.id] ?? []
             }
             guard !matching.isEmpty else { return nil }
-            let ordered = SmartList.sortsByTime(list) ? matching.sortedByDueTime() : matching.sorted(by: sortOrder)
+            let order = sortOrder(for: list)
+            var ordered: [ReminderItem]
+            if SmartList.sortsByTime(list) {
+                ordered = matching.sortedByDueTime()
+            } else if order == .manual && list.isSmart {
+                // Across several lists, manual means the lists in their order, each in its own arrangement.
+                let position = Dictionary(lists.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+                ordered = matching.sorted(by: .manual).enumerated()
+                    .sorted { (position[$0.element.listID] ?? 0, $0.offset) < (position[$1.element.listID] ?? 0, $1.offset) }
+                    .map(\.element)
+            } else {
+                ordered = matching.sorted(by: order)
+            }
+            // Sections only exist inside one list.
+            if !list.isSmart { ordered = ordered.groupedBySection() }
             return ReminderSection(list: list, items: ordered.nestingSubtasks())
         }
     }
@@ -301,6 +372,7 @@ final class TaskModel {
         reminder.title = new.title
         reminder.priority = new.priority ?? 0
         if let due = new.due { ReminderEditing.setDue(due, hasTime: new.hasTime, on: reminder) }
+        if let recurrence = new.recurrence { reminder.addRecurrenceRule(recurrence.makeRule()) }
         guard save(reminder, action: "add") else {
             report("Couldn't add the reminder. Please try again.")
             return false
@@ -323,6 +395,88 @@ final class TaskModel {
         }
         reminder.calendar = target
         if !save(reminder, action: "move") { report("Couldn't move “\(item.title)”.") }
+        // Sub-tasks go along with their parent.
+        for child in openItems where child.parentID == item.id {
+            if let stored = self.reminder(withID: child.id) {
+                stored.calendar = target
+                _ = save(stored, action: "move")
+            }
+        }
+        scheduleRefresh()
+    }
+
+    /// The open reminder with this id, from the latest fetch.
+    func openItem(withID id: String) -> ReminderItem? {
+        openItems.first { $0.id == id }
+    }
+
+    /// Puts a reminder next to another one of the same list, and switches that list to manual order so
+    /// the new position is what the dropdown shows.
+    func reorder(_ item: ReminderItem, nextTo target: ReminderItem, after: Bool) {
+        guard item.listID == target.listID, item.id != target.id else { return }
+        guard let moving = reminder(withID: item.id), let anchor = reminder(withID: target.id) else {
+            report("That reminder no longer exists.")
+            scheduleRefresh()
+            return
+        }
+        guard ReminderKit.move(moving, nextTo: anchor, after: after, in: store) else {
+            report("Couldn't change the order of “\(item.title)”.")
+            scheduleRefresh()
+            return
+        }
+        if let list = lists.first(where: { $0.id == item.listID }), sortOrder(for: list) != .manual {
+            setSortOrder(.manual, for: list)   // refreshes by itself
+        } else {
+            scheduleRefresh()
+        }
+    }
+
+    /// Saves what was edited in place: title, date, priority, flag and list.
+    func update(_ item: ReminderItem, to new: NewReminder) {
+        guard let reminder = reminder(withID: item.id) else {
+            report("That reminder no longer exists.")
+            scheduleRefresh()
+            return
+        }
+        if new.title != item.title { reminder.title = new.title }
+        if new.due != item.due || (new.due != nil && new.hasTime != item.dueHasTime) {
+            ReminderEditing.setDue(new.due, hasTime: new.hasTime, on: reminder)
+        }
+        reminder.priority = new.priority ?? 0
+        // Only touched when it was changed, so a repeat Remidor can't describe stays as it is.
+        if new.recurrence != item.recurrence {
+            for rule in reminder.recurrenceRules ?? [] { reminder.removeRecurrenceRule(rule) }
+            if let recurrence = new.recurrence { reminder.addRecurrenceRule(recurrence.makeRule()) }
+        }
+        let moved = new.listID.flatMap { $0 == item.listID ? nil : calendar(withID: $0) }
+        if let moved { reminder.calendar = moved }
+        guard save(reminder, action: "edit") else {
+            report("Couldn't save “\(item.title)”.")
+            scheduleRefresh()
+            return
+        }
+        if new.flagged != item.isFlagged, !ReminderKit.setFlagged(new.flagged, for: reminder, in: store) {
+            report("Saved “\(new.title)”, but couldn't change its flag.")
+        }
+        scheduleRefresh()
+    }
+
+    /// Whether a reminder has open sub-tasks of its own.
+    func hasSubtasks(_ item: ReminderItem) -> Bool {
+        openItems.contains { $0.parentID == item.id }
+    }
+
+    /// Makes a reminder a sub-task of another one in the same list.
+    func makeSubtask(_ item: ReminderItem, of parent: ReminderItem) {
+        guard item.listID == parent.listID, item.id != parent.id else { return }
+        guard let child = reminder(withID: item.id), let parentReminder = reminder(withID: parent.id) else {
+            report("That reminder no longer exists.")
+            scheduleRefresh()
+            return
+        }
+        if !ReminderKit.makeSubtask(child, of: parentReminder, in: store) {
+            report("Couldn't make “\(item.title)” a sub-task of “\(parent.title)”.")
+        }
         scheduleRefresh()
     }
 
@@ -402,20 +556,36 @@ final class TaskModel {
     }
 
     private func complete(_ item: ReminderItem) async {
+        // Checking off a parent checks off its open sub-tasks too. A repeating task keeps its own state.
+        let subtasks = item.isRepeating ? [] : openItems.filter { $0.parentID == item.id }
         // A repeating task isn't hidden: the same reminder stays and shows its next date after the refresh.
         if !item.isRepeating {
             // Hide it right away so a slow or stale refresh can't leave it in the list.
-            pendingRemovals[item.id] = Date()
+            let hidden = Set([item.id] + subtasks.map(\.id))
+            for id in hidden { pendingRemovals[id] = Date() }
             sections = sections.compactMap { section in
-                let rest = section.items.filter { $0.id != item.id }
+                let rest = section.items.filter { !hidden.contains($0.id) }
                 return rest.isEmpty ? nil : ReminderSection(list: section.list, items: rest)
             }
         }
         if let reminder = reminder(withID: item.id) {
             reminder.isCompleted = true
             if save(reminder, action: "complete") {
+                var finished: [String] = []
+                for subtask in subtasks {
+                    let stored = self.reminder(withID: subtask.id)
+                    stored?.isCompleted = true
+                    if let stored, save(stored, action: "complete") {
+                        finished.append(subtask.id)
+                    } else {
+                        pendingRemovals[subtask.id] = nil
+                        report("Couldn't complete the sub-task “\(subtask.title)”.")
+                    }
+                }
+                completedSubtasks[item.id] = finished.isEmpty ? nil : finished
                 showCompletionBanner(for: item)
             } else {
+                for subtask in subtasks { pendingRemovals[subtask.id] = nil }
                 pendingRemovals[item.id] = nil
                 report("Couldn't complete “\(item.title)”.")
             }
@@ -458,6 +628,14 @@ final class TaskModel {
         if let reminder = reminder(withID: item.id) {
             reminder.isCompleted = false
             if !save(reminder, action: "undo") { report("Couldn't restore “\(item.title)”.") }
+            // Sub-tasks that were checked off with it come back too.
+            for id in completedSubtasks.removeValue(forKey: item.id) ?? [] {
+                pendingRemovals[id] = nil
+                if let subtask = self.reminder(withID: id) {
+                    subtask.isCompleted = false
+                    _ = save(subtask, action: "undo")
+                }
+            }
         } else {
             report("Couldn't restore “\(item.title)”. It no longer exists.")
         }

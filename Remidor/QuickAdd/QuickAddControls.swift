@@ -32,6 +32,20 @@ struct QuickAddControls: View {
             .buttonStyle(.plain)
 
             Menu {
+                Button("Never") { draft.setRecurrence(nil) }
+                Divider()
+                Button("Daily") { draft.setRecurrence(Recurrence(frequency: .daily)) }
+                Button("Weekdays") { draft.setRecurrence(.weekdaysOnly) }
+                Button("Weekly") { draft.setRecurrence(Recurrence(frequency: .weekly)) }
+                Button("Monthly") { draft.setRecurrence(Recurrence(frequency: .monthly)) }
+                Button("Yearly") { draft.setRecurrence(Recurrence(frequency: .yearly)) }
+            } label: {
+                Chip(icon: "repeat", label: draft.recurrence?.shortLabel ?? "", active: draft.recurrence != nil)
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .help("Repeat. You can also type \"every sunday\" or \"every 2 weeks\".")
+
+            Menu {
                 Button("None") { draft.setPriority(nil) }
                 Button("Low  !") { draft.setPriority(9) }
                 Button("Medium  !!") { draft.setPriority(5) }

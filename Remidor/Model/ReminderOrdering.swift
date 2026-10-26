@@ -12,6 +12,7 @@ extension Array where Element == ReminderItem {
     func sorted(by order: SortOrder) -> [ReminderItem] {
         sorted { a, b in
             switch order {
+            case .manual: a.manualIndex != b.manualIndex ? a.manualIndex < b.manualIndex : Self.byTitle(a, b)
             case .dueDate: Self.isOrdered(a.due, b.due) { Self.byTitle(a, b) }
             case .priority: Self.byPriority(a, b) { Self.isOrdered(a.due, b.due) { Self.byTitle(a, b) } }
             case .title: Self.byTitle(a, b)
@@ -27,6 +28,18 @@ extension Array where Element == ReminderItem {
         }
     }
 
+    /// Groups the items by the section they sit in, keeping the order inside each section. Items that
+    /// aren't in a section come first, as in the Reminders app.
+    func groupedBySection() -> [ReminderItem] {
+        enumerated().sorted { ($0.element.sectionIndex, $0.offset) < ($1.element.sectionIndex, $1.offset) }.map(\.element)
+    }
+
+    /// Without the sub-tasks of the parents that are folded shut.
+    func hidingFoldedSubtasks(_ folded: Set<String>) -> [ReminderItem] {
+        guard !folded.isEmpty else { return self }
+        return filter { item in item.depth == 0 || !(item.parentID.map(folded.contains) ?? false) }
+    }
+
     /// Puts each sub-task directly under its parent. A sub-task whose parent isn't in this list stays top-level.
     func nestingSubtasks() -> [ReminderItem] {
         let ids = Set(map(\.id))
@@ -36,12 +49,19 @@ extension Array where Element == ReminderItem {
         var result: [ReminderItem] = []
         var visited = Set<String>()
 
-        func add(_ item: ReminderItem, depth: Int) {
+        func add(_ item: ReminderItem, depth: Int, in parent: ReminderItem? = nil) {
             guard visited.insert(item.id).inserted else { return }
             var copy = item
             copy.depth = depth
+            copy.childCount = children[item.id]?.count ?? 0
+            // A sub-task sits in its parent's section.
+            if let parent {
+                copy.sectionIndex = parent.sectionIndex
+                copy.sectionTitle = parent.sectionTitle
+                copy.sectionID = parent.sectionID
+            }
             result.append(copy)
-            for child in children[item.id] ?? [] { add(child, depth: depth + 1) }
+            for child in children[item.id] ?? [] { add(child, depth: depth + 1, in: copy) }
         }
         for item in self where !hasParentHere(item) { add(item, depth: 0) }
         // Items whose parents point at each other have no top level; show them rather than drop them.

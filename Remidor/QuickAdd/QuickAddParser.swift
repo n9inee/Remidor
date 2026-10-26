@@ -10,7 +10,7 @@ import Foundation
 /// Turns "call mom fri at 5pm !!! * ~Family #phone" into a title, due date, priority, flag and list, and
 /// reports where each recognized piece sits in the input so the UI can highlight it.
 enum QuickAddParser {
-    enum Kind { case date, priority, flag, list, tag }
+    enum Kind { case date, priority, flag, list, tag, recurrence }
 
     struct Token {
         let range: NSRange   // UTF-16 range in the original input
@@ -24,6 +24,7 @@ enum QuickAddParser {
         var listName: String?   // canonical name of the matched list
         var due: Date?
         var hasTime = false
+        var recurrence: Recurrence?
         var tokens: [Token] = []
     }
 
@@ -69,10 +70,28 @@ enum QuickAddParser {
             claim(match.range, .flag, strip: true)
         }
 
+        // "every sunday", "every 2 weeks", "ev day": claimed before the date, which would read the weekday.
+        if let found = parseRecurrence(in: masked as String) {
+            result.recurrence = found.recurrence
+            claim(found.range, .recurrence, strip: true)
+        }
+
         if let found = parseRelativeDate(in: masked as String) ?? parseDate(in: masked) {
             result.due = found.date
             result.hasTime = found.hasTime
             claim(found.range, .date, strip: true)
+        }
+
+        // A repeat needs a first date: the next matching weekday, or today.
+        if let recurrence = result.recurrence {
+            let base = result.due ?? Date()
+            let hasTime = result.due != nil && result.hasTime
+            if recurrence.frequency == .weekly, !recurrence.weekdays.isEmpty {
+                result.due = recurrence.firstOccurrence(onOrAfter: base, hasTime: hasTime)
+            } else if result.due == nil {
+                result.due = Calendar.current.startOfDay(for: base)
+            }
+            result.hasTime = hasTime
         }
 
         let title = NSMutableString(string: input)
@@ -81,6 +100,58 @@ enum QuickAddParser {
         }
         result.title = (title as String).split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return result
+    }
+
+    // MARK: Repeats
+
+    private static let everyWord = #"(?<!\S)(?:every|evry|ev)\s+"#
+    private static let dayName = #"(?:mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday|s)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?"#
+    private static let unitWord = #"(?:days?|weeks?|months?|years?)"#
+    private static let shortUnit = #"(?:days?|d|weeks?|wks?|w|months?|mos?|years?|yrs?|y)"#
+    private static let wordEnd = #"(?![\p{L}\p{N}])"#
+
+    private static func frequency(ofUnit unit: String) -> Recurrence.Frequency {
+        switch unit.lowercased().first {
+        case "d": .daily
+        case "w": .weekly
+        case "m": .monthly
+        default: .yearly
+        }
+    }
+
+    /// "every day", "every 3 weeks", "every other month", "every sunday", "every mon and thu", "every weekday".
+    private static func parseRecurrence(in text: String) -> (recurrence: Recurrence, range: NSRange)? {
+        let ns = text as NSString
+        func find(_ pattern: String) -> NSTextCheckingResult? {
+            regex(everyWord + pattern + wordEnd, options: .caseInsensitive)?
+                .firstMatch(in: text, range: NSRange(location: 0, length: ns.length))
+        }
+
+        if let m = find("(\\d+)\\s*(" + shortUnit + ")"), let amount = Int(ns.substring(with: m.range(at: 1))), amount > 0 {
+            return (Recurrence(frequency: frequency(ofUnit: ns.substring(with: m.range(at: 2))), interval: amount), m.range)
+        }
+        if let m = find("other\\s+(" + unitWord + ")") {
+            return (Recurrence(frequency: frequency(ofUnit: ns.substring(with: m.range(at: 1))), interval: 2), m.range)
+        }
+        if let m = find("(weekdays?|weekends?)") {
+            let isWeekend = ns.substring(with: m.range(at: 1)).lowercased().hasPrefix("weekend")
+            return (isWeekend ? .weekendsOnly : .weekdaysOnly, m.range)
+        }
+        let list = "(" + dayName + "(?:(?:\\s*,\\s*|\\s+and\\s+|\\s*&\\s*|\\s*/\\s*|\\s+)" + dayName + ")*)"
+        if let m = find(list) {
+            let names = ns.substring(with: m.range(at: 1)).lowercased()
+            let days = matches(dayName, in: names).compactMap { weekdayNumber(of: (names as NSString).substring(with: $0.range)) }
+            return (Recurrence(frequency: .weekly, weekdays: Array(Set(days))), m.range)
+        }
+        if let m = find("(" + unitWord + ")") {
+            return (Recurrence(frequency: frequency(ofUnit: ns.substring(with: m.range(at: 1)))), m.range)
+        }
+        return nil
+    }
+
+    /// 1 for Sunday through 7 for Saturday.
+    private static func weekdayNumber(of name: String) -> Int? {
+        ["sun": 1, "mon": 2, "tue": 3, "wed": 4, "thu": 5, "fri": 6, "sat": 7][String(name.lowercased().prefix(3))]
     }
 
     // MARK: Dates

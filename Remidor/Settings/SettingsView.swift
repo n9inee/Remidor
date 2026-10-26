@@ -25,8 +25,13 @@ struct SettingsView: View {
                     }
                 }
                 GroupBox("Sorting") {
-                    Picker("Sort tasks by", selection: $model.sortOrder) {
-                        ForEach(SortOrder.allCases) { Text($0.label).tag($0) }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Picker("Sort tasks by", selection: $model.sortOrder) {
+                            ForEach(SortOrder.allCases) { Text($0.label).tag($0) }
+                        }
+                        Text("Manual keeps the order you made in Reminders. A single list can have its own order, using the arrows next to it.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
@@ -172,9 +177,33 @@ private struct ListRow: View {
                 }
             }
             Spacer(minLength: 0)
+            if !SmartList.sortsByTime(list) { sortMenu }
             if !list.isSmart { defaultButton }
         }
         .padding(.vertical, 2)
+    }
+
+    /// Lets this list use its own sort order instead of the common one.
+    private var sortMenu: some View {
+        let own = model.listSortOrders[list.id]
+        return Menu {
+            Button { model.setSortOrder(nil, for: list) } label: {
+                if own == nil { Label("Same as the rest", systemImage: "checkmark") } else { Text("Same as the rest") }
+            }
+            Divider()
+            ForEach(SortOrder.allCases) { order in
+                Button { model.setSortOrder(order, for: list) } label: {
+                    if own == order { Label(order.label, systemImage: "checkmark") } else { Text(order.label) }
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.caption)
+                .foregroundStyle(own == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.accentColor))
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+        .fixedSize()
+        .help(own.map { "Sorted by \($0.label.lowercased()). Click to change." } ?? "Sorted like the other lists. Click to give this list its own order.")
     }
 
     private var defaultButton: some View {
