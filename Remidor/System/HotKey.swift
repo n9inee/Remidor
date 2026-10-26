@@ -24,60 +24,100 @@ struct Shortcut: Codable, Equatable {
     }
 }
 
-nonisolated private func hotKeyEventHandler(_: EventHandlerCallRef?, _: EventRef?, _: UnsafeMutableRawPointer?) -> OSStatus {
-    Task { @MainActor in HotKeyManager.shared.onPress?() }
+/// The things a system-wide shortcut can do.
+enum HotKeyAction: UInt32, CaseIterable, Identifiable {
+    case quickBar = 1, remindersApp
+
+    var id: UInt32 { rawValue }
+
+    var title: String {
+        switch self {
+        case .quickBar: "Open quick bar"
+        case .remindersApp: "Open Reminders app"
+        }
+    }
+
+    var defaultsKey: String {
+        switch self {
+        case .quickBar: DefaultsKey.quickAddShortcut
+        case .remindersApp: DefaultsKey.remindersShortcut
+        }
+    }
+
+    var defaultShortcut: Shortcut {
+        switch self {
+        case .quickBar: Shortcut(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey), key: "Space")
+        case .remindersApp: Shortcut(keyCode: UInt32(kVK_ANSI_O), modifiers: UInt32(optionKey | shiftKey), key: "O")
+        }
+    }
+}
+
+nonisolated private func hotKeyEventHandler(_: EventHandlerCallRef?, _ event: EventRef?, _: UnsafeMutableRawPointer?) -> OSStatus {
+    var id = EventHotKeyID()
+    let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
+                                   MemoryLayout<EventHotKeyID>.size, nil, &id)
+    guard status == noErr, let action = HotKeyAction(rawValue: id.id) else { return status }
+    Task { @MainActor in HotKeyManager.shared.handlers[action]?() }
     return noErr
 }
 
-/// Registers one system-wide hotkey. Carbon hotkeys work without Accessibility permission.
+/// Registers the system-wide hotkeys. Carbon hotkeys work without Accessibility permission.
 @MainActor @Observable
 final class HotKeyManager {
     static let shared = HotKeyManager()
 
-    var onPress: (() -> Void)?
-    /// True when macOS refused the shortcut because something else already owns it.
-    var conflict = false
+    /// The actions whose shortcut macOS refused because something else already owns it.
+    private(set) var conflicts: Set<HotKeyAction> = []
 
-    var shortcut: Shortcut? {
-        didSet {
-            let data = shortcut.flatMap { try? JSONEncoder().encode($0) } ?? Data()   // empty data means "cleared"
-            UserDefaults.standard.set(data, forKey: DefaultsKey.quickAddShortcut)
-            register()
-        }
-    }
-
-    @ObservationIgnored private var hotKeyRef: EventHotKeyRef?
+    private(set) var shortcuts: [HotKeyAction: Shortcut] = [:]
+    @ObservationIgnored fileprivate var handlers: [HotKeyAction: () -> Void] = [:]
+    @ObservationIgnored private var refs: [HotKeyAction: EventHotKeyRef] = [:]
     @ObservationIgnored private var handlerInstalled = false
 
     private init() {
-        if let data = UserDefaults.standard.data(forKey: DefaultsKey.quickAddShortcut) {
-            shortcut = try? JSONDecoder().decode(Shortcut.self, from: data)
-        } else {
-            shortcut = Shortcut(keyCode: UInt32(kVK_ANSI_N), modifiers: UInt32(controlKey | optionKey), key: "N")
+        for action in HotKeyAction.allCases {
+            if let data = UserDefaults.standard.data(forKey: action.defaultsKey) {
+                shortcuts[action] = try? JSONDecoder().decode(Shortcut.self, from: data)   // empty data means "cleared"
+            } else {
+                shortcuts[action] = action.defaultShortcut
+            }
         }
     }
 
-    func start(onPress: @escaping () -> Void) {
-        self.onPress = onPress
-        register()
+    func shortcut(for action: HotKeyAction) -> Shortcut? { shortcuts[action] }
+
+    func set(_ shortcut: Shortcut?, for action: HotKeyAction) {
+        shortcuts[action] = shortcut
+        UserDefaults.standard.set(shortcut.flatMap { try? JSONEncoder().encode($0) } ?? Data(), forKey: action.defaultsKey)
+        register(action)
     }
 
-    private func register() {
-        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef); self.hotKeyRef = nil }
-        conflict = false
-        guard onPress != nil, let shortcut else { return }
+    func start(_ handlers: [HotKeyAction: () -> Void]) {
+        self.handlers = handlers
+        HotKeyAction.allCases.forEach(register)
+    }
+
+    private func register(_ action: HotKeyAction) {
+        if let ref = refs.removeValue(forKey: action) { UnregisterEventHotKey(ref) }
+        conflicts.remove(action)
+        guard handlers[action] != nil, let shortcut = shortcuts[action] else { return }
 
         if !handlerInstalled {
             var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-            let status = InstallEventHandler(GetApplicationEventTarget(), hotKeyEventHandler, 1, &spec, nil, nil)
-            guard status == noErr else {
-                conflict = true
+            guard InstallEventHandler(GetApplicationEventTarget(), hotKeyEventHandler, 1, &spec, nil, nil) == noErr else {
+                conflicts.insert(action)
                 return
             }
             handlerInstalled = true
         }
-        let id = EventHotKeyID(signature: OSType(0x524D4452), id: 1)   // 'RMDR'
-        let status = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, id, GetApplicationEventTarget(), 0, &hotKeyRef)
-        conflict = status != noErr
+        // The same combination can't serve two actions.
+        if shortcuts.contains(where: { $0.key != action && $0.value == shortcut && refs[$0.key] != nil }) {
+            conflicts.insert(action)
+            return
+        }
+        var ref: EventHotKeyRef?
+        let id = EventHotKeyID(signature: OSType(0x524D4452), id: action.rawValue)   // 'RMDR'
+        let status = RegisterEventHotKey(shortcut.keyCode, shortcut.modifiers, id, GetApplicationEventTarget(), 0, &ref)
+        if status == noErr, let ref { refs[action] = ref } else { conflicts.insert(action) }
     }
 }

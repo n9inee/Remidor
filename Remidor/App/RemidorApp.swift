@@ -11,7 +11,10 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Register the global shortcut once the app is fully running.
-        HotKeyManager.shared.start { QuickAddPanelController.shared.toggle(model: TaskModel.shared) }
+        HotKeyManager.shared.start([
+            .quickBar: { QuickAddPanelController.shared.toggle(model: TaskModel.shared) },
+            .remindersApp: { TaskModel.shared.openRemindersApp() },
+        ])
         UpdateChecker.shared.start()
     }
 }

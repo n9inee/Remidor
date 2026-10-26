@@ -20,4 +20,5 @@ enum DefaultsKey {
     static let lastUpdateCheck = "lastUpdateCheck"
     static let dismissedUpdate = "dismissedUpdateVersion"
     static let quickAddShortcut = "quickAddShortcut"
+    static let remindersShortcut = "remindersShortcut"
 }

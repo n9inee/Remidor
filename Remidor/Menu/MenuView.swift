@@ -75,9 +75,12 @@ struct MenuView: View {
 
     private var footer: some View {
         HStack {
-            FooterButton(title: "Settings", icon: "gearshape") {
-                openWindow(id: "settings")
-                NSApp.activate()
+            HStack(spacing: 2) {
+                FooterButton(title: "Settings", icon: "gearshape", iconOnly: true) {
+                    openWindow(id: "settings")
+                    NSApp.activate()
+                }
+                FooterButton(title: "Open Reminders", icon: "checklist", iconOnly: true, action: model.openRemindersApp)
             }
             Spacer()
             if !model.recentlyCompleted.isEmpty {
@@ -102,11 +105,24 @@ struct MenuView: View {
 private struct FooterButton: View {
     let title: String
     let icon: String
+    var iconOnly = false
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) { Label(title, systemImage: icon).font(.callout) }
-            .buttonStyle(FooterButtonStyle())
+        Button(action: action) {
+            Label(title, systemImage: icon).font(.callout)
+                .labelStyle(FooterLabelStyle(iconOnly: iconOnly))
+        }
+        .buttonStyle(FooterButtonStyle())
+        .help(title)
+    }
+}
+
+private struct FooterLabelStyle: LabelStyle {
+    let iconOnly: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if iconOnly { configuration.icon } else { Label(configuration) }
     }
 }
 

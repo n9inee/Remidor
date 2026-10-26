@@ -10,14 +10,15 @@ import SwiftUI
 
 /// Click, then press the key combination you want. Esc cancels, Delete clears.
 struct ShortcutRecorder: View {
-    @Bindable var hotKey: HotKeyManager
+    let hotKey: HotKeyManager
+    let action: HotKeyAction
     @State private var recording = false
     @State private var monitor: Any?
 
     var body: some View {
         HStack(spacing: 6) {
             Button { recording ? stop() : start() } label: {
-                Text(recording ? "Press shortcut…" : (hotKey.shortcut?.display ?? "Record shortcut"))
+                Text(recording ? "Press shortcut…" : (hotKey.shortcut(for: action)?.display ?? "Record shortcut"))
                     .font(.system(.body, design: .rounded).weight(.medium))
                     .frame(minWidth: 110)
                     .padding(.horizontal, 10).padding(.vertical, 4)
@@ -28,8 +29,8 @@ struct ShortcutRecorder: View {
             }
             .buttonStyle(.plain)
 
-            if hotKey.shortcut != nil, !recording {
-                Button { hotKey.shortcut = nil } label: {
+            if hotKey.shortcut(for: action) != nil, !recording {
+                Button { hotKey.set(nil, for: action) } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -59,7 +60,7 @@ struct ShortcutRecorder: View {
         case kVK_Escape:
             return stop()
         case kVK_Delete, kVK_ForwardDelete:
-            hotKey.shortcut = nil
+            hotKey.set(nil, for: action)
             return stop()
         default:
             break
@@ -74,7 +75,7 @@ struct ShortcutRecorder: View {
         // A global shortcut without ⌃, ⌥ or ⌘ would hijack normal typing.
         guard modifiers & UInt32(controlKey | optionKey | cmdKey) != 0 else { return }
 
-        hotKey.shortcut = Shortcut(keyCode: UInt32(event.keyCode), modifiers: modifiers, key: Self.label(for: event))
+        hotKey.set(Shortcut(keyCode: UInt32(event.keyCode), modifiers: modifiers, key: Self.label(for: event)), for: action)
         stop()
     }
 

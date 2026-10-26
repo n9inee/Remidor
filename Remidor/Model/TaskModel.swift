@@ -391,7 +391,7 @@ final class TaskModel {
         }
     }
 
-    private func openRemindersApp() {
+    func openRemindersApp() {
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.reminders") else { return }
         NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
     }

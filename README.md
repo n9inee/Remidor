@@ -85,7 +85,7 @@ A `*` only counts as a flag when it stands alone, so `*bold*` and `5*3` are left
 
 ### Global shortcut and quick select
 
-Press **⌃⌥N** from anywhere (you can change it in Settings) to open a floating box, Spotlight-style, over whatever you're doing.
+Press **⌥Space** from anywhere to open a floating box, Spotlight-style, over whatever you're doing. **⇧⌥O** opens the Reminders app. Both can be changed in Settings. The dropdown's footer also has a button for the Reminders app, next to the Settings gear.
 
 - Start typing to add a reminder, exactly as in the dropdown. While you type, the first row is "Add …", so **Return** adds it.
 - Your open tasks are listed underneath. Typing filters them, **↑ ↓** moves the highlight and **Return** on a task starts working on it, followed by choosing how long.
@@ -144,7 +144,7 @@ Completing a task shows a banner with an **Undo** button for ten seconds, both i
 - **Lists.** Choose which lists (and smart lists) appear, drag to reorder, and click the star to make a list the default for new reminders. Click the filled star again to go back to automatic.
 - **Sorting.** Due date, priority, title or creation date.
 - **Timer.** The default duration.
-- **Quick add.** The global shortcut. Remidor warns you if macOS or another app already uses the combination you chose.
+- **Shortcuts.** Open the quick bar and the Reminders app from anywhere. Remidor warns you if macOS or another app already uses the combination you chose.
 
 All settings are saved between launches.
 

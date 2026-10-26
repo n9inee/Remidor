@@ -38,16 +38,20 @@ struct SettingsView: View {
                     }
                     .padding(6)
                 }
-                GroupBox("Quick add") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Open the add-reminder box from anywhere")
-                        ShortcutRecorder(hotKey: hotKey)
-                        if hotKey.conflict {
-                            Label("macOS or another app already uses this shortcut. Pick a different one.",
-                                  systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .fixedSize(horizontal: false, vertical: true)
+                GroupBox("Shortcuts") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(HotKeyAction.allCases) { action in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(action.title)
+                                ShortcutRecorder(hotKey: hotKey, action: action)
+                                if hotKey.conflicts.contains(action) {
+                                    Label("macOS or another app already uses this shortcut. Pick a different one.",
+                                          systemImage: "exclamationmark.triangle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
