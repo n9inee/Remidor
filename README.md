@@ -6,6 +6,8 @@ A menu bar companion for the macOS **Reminders** app. See what's open at a glanc
   <img src="docs/images/dropdown.png" alt="Remidor's dropdown listing today's reminders" width="460">
 </p>
 
+**[Website](https://n9inee.github.io/Remidor/)** · **[Download](../../releases/latest)** · **[Demo video](docs/remidor-demo.mp4)**
+
 > The screenshots in this README are mockups, rendered from Remidor's real views with invented sample data.
 
 ## Features

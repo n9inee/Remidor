@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remidor</title>
+<meta name="description" content="A menu bar companion for the macOS Reminders app. See what's open, add reminders in plain language and focus on one task with a timer.">
+<meta property="og:title" content="Remidor">
+<meta property="og:description" content="A menu bar companion for the macOS Reminders app.">
+<meta property="og:image" content="images/dropdown.png">
+<style>
+  :root {
+    --bg: #f6f5f8;
+    --card: #ffffff;
+    --text: #1d1b22;
+    --muted: #6a6672;
+    --line: #e4e1ea;
+    --accent: #d6407f;
+    --accent-text: #ffffff;
+    --shadow: 0 10px 40px rgba(40, 20, 70, .12);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17141c;
+      --card: #211d29;
+      --text: #f1eef6;
+      --muted: #a29cae;
+      --line: #342f3e;
+      --accent: #e5609f;
+      --accent-text: #1a1020;
+      --shadow: 0 10px 40px rgba(0, 0, 0, .45);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  img { max-width: 100%; height: auto; display: block; }
+  code, kbd {
+    font: 0.88em ui-monospace, "SF Mono", Menlo, monospace;
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+    padding: .1em .4em; border-radius: 5px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px; }
+
+  header.top { padding: 20px 0; }
+  header.top .wrap { display: flex; justify-content: space-between; align-items: center; }
+  .brand { font-weight: 700; font-size: 20px; letter-spacing: -.01em; }
+  header.top nav { display: flex; gap: 22px; font-size: 15px; }
+  header.top nav a { color: var(--muted); text-decoration: none; }
+  header.top nav a:hover { color: var(--text); }
+
+  .hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; padding: 40px 0 70px; }
+  .hero h1 { font-size: clamp(34px, 5vw, 54px); line-height: 1.08; letter-spacing: -.03em; margin: 0 0 18px; }
+  .hero p.lead { font-size: 20px; color: var(--muted); margin: 0 0 28px; max-width: 30em; }
+  .hero img { border-radius: 14px; box-shadow: var(--shadow); }
+  .buttons { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 10px; font-weight: 600;
+    text-decoration: none; background: var(--accent); color: var(--accent-text);
+  }
+  .btn:hover { filter: brightness(1.06); }
+  .btn.plain { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .note { color: var(--muted); font-size: 14px; margin-top: 14px; }
+
+  section { padding: 56px 0; }
+  section h2 { font-size: 32px; letter-spacing: -.02em; line-height: 1.2; margin: 0 0 12px; }
+  section .sub { color: var(--muted); margin: 0 0 32px; max-width: 38em; }
+
+  .video { border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); background: #000; }
+  video { width: 100%; display: block; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15.5px; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+  .split.flip > :first-child { order: 2; }
+  .split img { border-radius: 12px; box-shadow: var(--shadow); }
+  .split h2 { font-size: 28px; }
+  .split p { color: var(--muted); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 8px; }
+  td { padding: 8px 10px 8px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  td:first-child { white-space: nowrap; font-weight: 600; width: 6.5em; }
+
+  ol.steps { padding-left: 1.2em; }
+  ol.steps li { margin-bottom: 10px; }
+  pre {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; overflow-x: auto; font-size: 14px;
+  }
+
+  footer { padding: 40px 0 60px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+
+  @media (max-width: 800px) {
+    .hero, .split { grid-template-columns: 1fr; gap: 28px; }
+    .split.flip > :first-child { order: 0; }
+    .grid { grid-template-columns: 1fr; }
+    header.top nav { gap: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">Remidor</div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/n9inee/Remidor">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1>Your reminders, one click from the menu bar.</h1>
+      <p class="lead">Remidor sits next to the Reminders app. See what's open at a glance, add reminders by typing a sentence, and focus on one task with a timer.</p>
+      <div class="buttons">
+        <a class="btn" href="https://github.com/n9inee/Remidor/releases/latest">Download for Mac</a>
+        <a class="btn plain" href="#install">How to install</a>
+      </div>
+      <p class="note">Free and open source. macOS 14 or later, Apple Silicon and Intel.</p>
+    </div>
+    <img src="images/dropdown.png" alt="Remidor's dropdown listing today's reminders" width="460" height="552">
+  </div>
+
+  <div class="wrap">
+    <div class="video">
+      <video controls preload="metadata" playsinline>
+        <source src="remidor-demo.mp4" type="video/mp4">
+        Your browser can't play this video. You can <a href="remidor-demo.mp4">download it</a> instead.
+      </video>
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>What it does</h2>
+      <p class="sub">Everything stays in sync with the Reminders app, and with iCloud, because it works on the same data.</p>
+      <div class="grid">
+        <div class="card"><h3>Menu bar dropdown</h3><p>Open reminders grouped by list, with Today, Scheduled, Flagged and All. Fold lists shut, drag them into your order, resize the window.</p></div>
+        <div class="card"><h3>Type to add</h3><p>Write "call mom tmrw at 8pm !!!" and the date, priority, list, tags and flag are picked out for you.</p></div>
+        <div class="card"><h3>Focus timer</h3><p>Click a task, choose how long, and watch the countdown in the menu bar. Extend it or check the task off when time is up.</p></div>
+        <div class="card"><h3>Global shortcuts</h3><p>Press <kbd>⌥Space</kbd> anywhere to add or pick a task. <kbd>⇧⌥O</kbd> opens Reminders. Both can be changed.</p></div>
+        <div class="card"><h3>Right-click edits</h3><p>Change a task's date, priority, flag or list without opening Reminders. Delete asks before it does anything.</p></div>
+        <div class="card"><h3>Undo</h3><p>Checked something off by accident? Undo it from the banner, from <kbd>⌘Z</kbd> or from the Recent menu.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split">
+      <div>
+        <h2>Say it the way you'd say it</h2>
+        <p>Remidor highlights what it understood while you type, and every piece also has a button, so the mouse works just as well.</p>
+        <table>
+          <tr><td>Date</td><td><code>tmrw at 8</code> <code>fri</code> <code>in 20 min</code></td></tr>
+          <tr><td>Priority</td><td><code>!</code> <code>!!</code> <code>!!!</code></td></tr>
+          <tr><td>Flag</td><td><code>*</code></td></tr>
+          <tr><td>List</td><td><code>~Work</code> <code>~"My List"</code></td></tr>
+          <tr><td>Tag</td><td><code>#errands</code></td></tr>
+        </table>
+      </div>
+      <img src="images/quickadd-typed.png" alt="Highlighted date, priority, flag, list and tag in the quick-add box" width="896" height="262" loading="lazy">
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split flip">
+      <div>
+        <h2>A quick bar for anywhere</h2>
+        <p>Press <kbd>⌥Space</kbd> over whatever you're doing. Type to add a reminder, or to find one and start working on it. <kbd>Shift</kbd>+<kbd>Return</kbd> checks the highlighted task off.</p>
+      </div>
+      <img src="images/quickselect.png" alt="The floating quick-select box" width="920" height="872" loading="lazy">
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split">
+      <div>
+        <h2>Edit from the right-click menu</h2>
+        <p>Set a date, change the priority, flag it or move it to another list. The same menu opens the task in Reminders or shows its details.</p>
+      </div>
+      <img src="images/contextmenu.png" alt="The right-click menu" width="816" height="594" loading="lazy">
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Private by design</h2>
+      <p class="sub">Remidor reads and changes reminders through Apple's EventKit and has no analytics. The only network request is an optional once-a-day check for a newer release, which sends nothing about you or your reminders and can be turned off. It runs in the App Sandbox.</p>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Install</h2>
+      <ol class="steps">
+        <li>Download the zip from the <a href="https://github.com/n9inee/Remidor/releases/latest">latest release</a> and unzip it.</li>
+        <li>Drag <strong>Remidor.app</strong> into your Applications folder and open it.</li>
+        <li>macOS will say it can't verify the app, because Remidor isn't notarized by Apple (that needs a paid developer account). Open <strong>System Settings → Privacy &amp; Security</strong>, scroll down and click <strong>Open Anyway</strong>. You only do this once per version.</li>
+        <li>When macOS asks for access to your reminders, choose Allow.</li>
+      </ol>
+      <p>Prefer the Terminal? This removes the download flag instead:</p>
+<pre>xattr -dr com.apple.quarantine /Applications/Remidor.app</pre>
+      <div class="buttons" style="margin-top:24px">
+        <a class="btn" href="https://github.com/n9inee/Remidor/releases/latest">Download for Mac</a>
+        <a class="btn plain" href="https://github.com/n9inee/Remidor#readme">Read the full README</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Remidor, made by n9ine.</span>
+    <span><a href="https://github.com/n9inee/Remidor">Source on GitHub</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
