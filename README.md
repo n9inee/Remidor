@@ -1,5 +1,7 @@
 # Remidor
 
+![Downloads](https://img.shields.io/github/downloads/n9inee/Remidor/total)
+
 A menu bar companion for the macOS **Reminders** app. See what's open at a glance, add reminders in plain language, and focus on one task at a time with a built-in timer. It checks things off in Reminders when you're done.
 
 <p align="center">
