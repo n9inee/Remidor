@@ -2,7 +2,7 @@
 
 ![Downloads](https://img.shields.io/github/downloads/n9inee/Remidor/total)
 
-A menu bar companion for the macOS **Reminders** app. See what's open at a glance, add reminders in plain language, and focus on one task at a time with a built-in timer. It checks things off in Reminders when you're done.
+A menu bar companion for the macOS **Reminders** app. See what's open at a glance, add reminders in plain language, and focus on one task at a time with a built-in timer.
 
 <p align="center">
   <img src="docs/images/dropdown.png" alt="Remidor's dropdown listing today's reminders" width="460">
@@ -10,239 +10,84 @@ A menu bar companion for the macOS **Reminders** app. See what's open at a glanc
 
 **[Website](https://n9inee.github.io/Remidor/)** · **[Download](../../releases/latest)** · **[Demo video](docs/remidor-demo.mp4)**
 
-> The screenshots in this README are mockups, rendered from Remidor's real views with invented sample data.
+> The screenshots are mockups, rendered from Remidor's real views with invented sample data.
 
-## Features
+## What it does
 
-- [Menu bar dropdown](#menu-bar-dropdown)
-- [Focus timer](#focus-timer)
-- [Quick add with natural language](#quick-add)
-- [Global shortcut and quick select](#global-shortcut-and-quick-select)
-- [Sub-tasks, tags and details](#sub-tasks-tags-and-details)
-- [Right-click menu](#right-click-menu)
-- [Undo](#undo)
-- [Settings](#settings)
-
-### Menu bar dropdown
-
-Click the checklist icon to see your open reminders, grouped by list with a divider and a count for each. Lists use their Reminders colour, priorities show as `!`, `!!` and `!!!`, and overdue dates turn red. The list refreshes when you open it, whenever Reminders changes and every minute, so it stays in step with the Reminders app (and with iCloud).
-
-- **Smart lists.** Today, Scheduled, Flagged and All are available alongside your own lists. Today and Scheduled always sort by due date and time first, then priority.
-- **Sorting.** Everything else sorts by due date, priority, title, creation date or **Manual**, whichever you pick in Settings. Manual is the arrangement you made by dragging reminders around in the Reminders app, taken over as it is. You can set one order for every list, or give single lists their own with the arrows next to them in Settings.
-- **Drag and drop.** Pick a reminder up and it follows your mouse. Drop it on the top or bottom edge of another one in the same list to change its place (a line shows where it will land), or on the middle of one to make it that reminder's sub-task. The list scrolls by itself when you carry a reminder to its top or bottom edge. Changing a place switches the list to manual order, so the new position is kept, and it shows up in the Reminders app too. Drop a reminder on another list's name, or on one of its reminders, to move it there; the list's name lights up, not the reminder. It is then sorted like the rest of that list instead of switching it to manual. Dropping on Flagged flags the reminder, dropping on Today makes it due today, and Scheduled and All take nothing.
-- **List sections.** If a list has sections in Reminders (like Food and Clothing in a shopping list), the dropdown shows them as headings in the same order, with each reminder under its section. Click a heading to fold that section away, as in Reminders.
-- **Resizable.** The list is only as tall as it needs to be, so folding every list leaves no scroll bar. Drag the small handle under the list to make it taller or shorter. Double-click it to reset. Remidor remembers the height.
-- **Collapsible lists.** Click a list's header to fold it shut or open it again. Which lists are folded is remembered between launches.
-- **List order.** Drag lists into any order in Settings. That order is used everywhere: the dropdown, the list menus and the quick-select box.
-- **Light and dark.** Follows your system appearance.
-
-<p align="center">
-  <img src="docs/images/dropdown-light.png" alt="The dropdown in light mode" width="380">
-</p>
-
-### Focus timer
-
-Click a task to start working on it.
-
-1. The menu bar icon turns into the task's title and you choose how long to work. The hour and minute boxes step in 15-minute increments, or you can type a value or tap a preset (15m, 30m, 45m, 1h). The default is 30 minutes.
-2. A visible countdown runs in the menu bar next to the title.
-3. When time is up, the menu bar shows the title with a checkmark. Open it to extend by another stretch, mark the task done (it's checked off in Reminders and disappears from the list) or close the panel with the ✕ without doing either.
+- **Dropdown.** Your open reminders, grouped by list, with Today, Scheduled, Flagged and All. Fold lists, list sections and sub-tasks, resize the window, and reorder lists in Settings.
+- **Sorting.** By due date, priority, title, creation date or **Manual**, which is the order you made in the Reminders app. Set it for all lists or for each list on its own.
+- **Quick add.** Type "call mom tmrw at 8pm !!!" and the date, priority, list and tags are picked out for you (see below).
+- **Edit in place.** Hold a title for one second, or right-click → Edit, and change the reminder with everything the quick-add box understands.
+- **Drag and drop.** Drag a reminder to reorder it (the list switches to manual), onto another reminder to make it a sub-task, onto another list to move it, onto Flagged to flag it, or onto Today to make it due today.
+- **Focus timer.** Click a task, pick how long, and watch the countdown in the menu bar. Extend it or check the task off when time is up.
+- **Shortcuts.** **⌥Space** opens a floating box from anywhere to add a reminder, find one, or check one off (**⇧↩**). **⇧⌥O** opens the Reminders app. Both can be changed in Settings.
+- **Undo.** Checked something off by accident? Use the banner, **⌘Z**, or the Recent menu. Checking off a parent checks off its sub-tasks, and undo brings them back.
+- **Right-click menu.** Open, Edit, Date, Priority, Flag, List, Details and Delete.
 
 <p align="center">
   <img src="docs/images/timer.png" alt="Choosing a duration, the running countdown, and the finished screen" width="900">
 </p>
 
-<p align="center">
-  <img src="docs/images/menubar.png" alt="The four menu bar states" width="540">
-</p>
+## Quick add
 
-### Quick add
-
-The box at the top of the dropdown adds reminders to any list, even lists you've hidden from the menu. Type naturally and Remidor highlights what it understood as you go:
+Type naturally and Remidor highlights what it understood as you go:
 
 | Type | Examples | Result |
 | --- | --- | --- |
-| Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `next fri`, `in 20 min`, `in 3 days` | Due date, with an alert when a time is given |
-| Repeat | `every sunday`, `ev day`, `every 2 weeks`, `every other month`, `every mon and thu`, `every weekday` | Repeats, starting on the next matching day |
+| Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `in 20 min`, `in 3 days` | Due date, with an alert when a time is given |
+| Repeat | `every sunday`, `ev day`, `every 2 weeks`, `every mon and thu`, `every weekday` | Repeats, starting on the next matching day |
 | Priority | `!` `!!` `!!!` | Low, medium, high |
 | Flag | `*` | Flags the reminder |
 | List | `~Work`, `~"My List"` | Adds to that list |
 | Tag | `#errands` | Added to the title and highlighted |
 
-`every` can be shortened to `ev`. A repeat keeps its time, so `every tue at 7am` repeats every Tuesday at 7. A repeat button next to the date offers Daily, Weekdays, Weekly, Monthly and Yearly, and the row details show how a reminder repeats. Remidor only changes a repeat when you change it, so complicated repeats made in Reminders stay as they are.
-
-Shorthand such as `tmr`, `tmrw`, `2moro`, `tonite` and `nxt` is understood. A bare hour after `at` is read as 1–6 → pm, 7–11 → am and 12 → noon, so `at 8` means 8 am and `at 4` means 4 pm. Add `am` or `pm` to be explicit.
+A bare hour after `at` is read as 1–6 → pm, 7–11 → am and 12 → noon, so `at 8` means 8 am. Add `am` or `pm` to be explicit. Every piece also has a button, typing `~`, `#` or `*` suggests lists, tags and the flag, and **Tab** turns what was typed into chips. **Return** adds the reminder. New reminders go to the list you starred in Settings, otherwise to **Inbox**, otherwise to your default list.
 
 <p align="center">
   <img src="docs/images/quickadd-typed.png" alt="Highlighted date, priority, flag, list and tag in the quick-add box" width="560">
 </p>
 
-A `*` only counts as a flag when it stands alone, so `*bold*` and `5*3` are left alone. Everything has a button too (date with a calendar, priority, flag, list), and the buttons always show what will be saved. A typed value wins over a button choice, and the other way round.
-
-- **Autocomplete.** Typing `~`, `#` or `*` suggests your lists, your tags or the flag. Click a suggestion or press Tab to accept it.
-- **Tab turns text into chips.** Pressing Tab accepts the open suggestion and moves everything highlighted (date, priority, flag, list and tags) out of the text box and onto the chips. Type a new date and press Tab again to replace the old one.
-- **Return does the same, then adds.** It takes in the open suggestion and every highlighted piece, then adds the reminder.
-- **Default list.** New reminders go to the list you starred in Settings, otherwise to **Inbox** if you have one, otherwise to your Reminders default list.
-
 <p align="center">
-  <img src="docs/images/quickadd-suggest.png" alt="List suggestions while typing ~Ho" width="290">
+  <img src="docs/images/sections.png" alt="A list with sections, one parent folded and one open" width="300">
   &nbsp;
-  <img src="docs/images/quickadd-flag.png" alt="The flag suggestion while typing a star" width="290">
-  &nbsp;
-  <img src="docs/images/quickadd-chips.png" alt="The same reminder after pressing Tab, with chips for date, priority, flag, list and tag" width="290">
+  <img src="docs/images/settings.png" alt="The Settings window" width="460">
 </p>
-
-### Global shortcut and quick select
-
-Press **⌥Space** from anywhere to open a floating box, Spotlight-style, over whatever you're doing. **⇧⌥O** opens the Reminders app. Both can be changed in Settings. The dropdown's footer also has a button for the Reminders app, next to the Settings gear.
-
-- Start typing to add a reminder, exactly as in the dropdown. While you type, the first row is "Add …", so **Return** adds it.
-- Your open tasks are listed underneath. Typing filters them, **↑ ↓** moves the highlight and **Return** on a task starts working on it, followed by choosing how long.
-- **Check a task off** without leaving the box: click the circle in front of it, or press **⇧ Return** to complete the highlighted one. The list closes up and the next task takes its place.
-- Esc, or a click anywhere else, closes it.
-
-<p align="center">
-  <img src="docs/images/quickselect.png" alt="The floating quick-select box" width="460">
-</p>
-
-### Sub-tasks, tags and details
-
-Sub-tasks sit directly under their parent, indented, and Reminders' own tags show under the title in purple. A parent with sub-tasks has a chevron at the right: click it to fold the sub-tasks away or show them again (Remidor remembers which parents are folded). Checking off a parent checks off its open sub-tasks too, and Undo brings them all back. The ⓘ button expands any row to show the notes (links are clickable), the URL, tags and key facts such as list, due date, priority and creation date. Flagged tasks show a small orange flag, and the Flagged smart list collects them. Hovering a long title shows it in full.
-
-<p align="center">
-  <img src="docs/images/details.png" alt="An expanded reminder with notes, a link, details and two sub-tasks" width="400">
-  <img src="docs/images/sections.png" alt="A list with two sections, one parent folded and one open" width="400">
-</p>
-
-Click the circle in front of a task to complete it. Click anywhere else on the row to start the timer.
-
-### Right-click menu
-
-| Item | What it does |
-| --- | --- |
-| **Open** | Opens the task's list in the Reminders app |
-| **Edit** | Edits the reminder in place, like the quick-add box (see below) |
-| **Date** | Sets the due day to Today, Tomorrow or Next Week (the time of day is kept), or removes the date |
-| **Priority** | Sets None, Low, Medium or High |
-| **Flag** / **Remove Flag** | Flags the task, or takes the flag off |
-| **List** | Moves the task to another list |
-| **Details** | Expands the row |
-| **Delete** | Deletes the reminder, after asking you to confirm |
-
-**Editing.** Hold the title of a reminder for one second (a bar fills up under it), or choose Edit, and the row turns into the quick-add box with the reminder's own values. Change the title, type a date, `!`, `*`, `~List` or `#tag` the way you do when adding, or use the buttons, then press Return or Save. Esc cancels.
-
-<p align="center">
-  <img src="docs/images/contextmenu.png" alt="The right-click menu" width="400">
-</p>
-
-### Undo
-
-Completing a task shows a banner with an **Undo** button for ten seconds, both in the dropdown and in the shortcut box. Press **⌘Z** to undo too. Press it again to step back through earlier completions. While you're typing in the add box, ⌘Z keeps its usual job of undoing your typing. The footer's **Recent** menu keeps the last five completed tasks, so an accidental tick is easy to take back.
-
-**Repeating tasks can't be undone here.** Completing one in Reminders keeps the original, moves it to its next date and logs a separate completed copy, so there is nothing safe to un-complete. Remidor shows a "Repeats" note instead of an Undo button. To take one back, use the Reminders app.
-
-<p align="center">
-  <img src="docs/images/undo.png" alt="The undo banner at the bottom of the dropdown" width="340">
-  &nbsp;
-  <img src="docs/images/quickselect-undo.png" alt="The same banner in the shortcut box" width="400">
-</p>
-
-### Settings
-
-<p align="center">
-  <img src="docs/images/settings.png" alt="The Settings window" width="560">
-</p>
-
-- **General.** *Check for updates* looks at GitHub about once a day and shows a banner in the dropdown when a newer release exists (see [Updating](#updating)). *Open Remidor at login* starts the app when you log in. It also appears under System Settings → General → Login Items, and if macOS needs your approval the switch shows a button that opens that pane.
-- **Lists.** Choose which lists (and smart lists) appear, drag to reorder, and click the star to make a list the default for new reminders. Click the filled star again to go back to automatic.
-- **Sorting.** Due date, priority, title, creation date or Manual, for all lists or for each list on its own.
-- **Timer.** The default duration.
-- **Shortcuts.** Open the quick bar and the Reminders app from anywhere. Remidor warns you if macOS or another app already uses the combination you chose.
-
-All settings are saved between launches.
 
 ## Install
-
-### Download
 
 Remidor needs **macOS 14 (Sonoma) or later** and runs on Apple Silicon and Intel Macs.
 
 1. Get `Remidor-….zip` from the [latest release](../../releases/latest) and unzip it.
 2. Drag **Remidor.app** into your Applications folder and open it.
-3. macOS will say it can't verify the app, because Remidor isn't notarized by Apple. That requires a paid developer account, and the app is free and open source. To open it anyway, go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the Remidor message, then confirm. You only have to do this once.
-4. When macOS asks for access to your reminders, choose *Allow*. If you decline, the dropdown shows a button that opens the right Privacy settings pane.
+3. macOS will say it can't verify the app, because Remidor isn't notarized by Apple (that needs a paid developer account). Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. You only do this once per version. Or, in the Terminal:
 
-If you prefer the Terminal, this removes the download flag instead:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Remidor.app
+   ```
 
-```bash
-xattr -dr com.apple.quarantine /Applications/Remidor.app
-```
+4. When macOS asks for access to your reminders, choose *Allow*.
 
-Each release also has a `.sha256` file if you'd like to check the download.
-
-### Updating
-
-Remidor checks GitHub about once a day for a newer release. When there is one, the dropdown shows a banner with a **View** button that opens the release page. Nothing is downloaded or installed automatically: download the new zip, replace the app in your Applications folder and open it. Your settings are kept, because macOS stores them by the app's bundle ID and not inside the app file. You can turn the check off, or run it by hand, in Settings → General.
-
-<p align="center">
-  <img src="docs/images/update.png" alt="The update banner at the bottom of the dropdown" width="340">
-</p>
-
-Since each release is a new build to macOS, expect the Open Anyway step and the Reminders prompt once more after an update.
+Remidor checks GitHub about once a day for a newer release and shows a banner in the dropdown when there is one. It never downloads or installs anything by itself. You can turn the check off in Settings.
 
 ### Build from source
 
-Remidor is built with SwiftUI and has no dependencies.
+Open `Remidor.xcodeproj` in Xcode 16 or later. Reminders access needs a signed build, so give it your own team: create `Config/Local.xcconfig` (git ignores it) with `DEVELOPMENT_TEAM = YOURTEAMID`. Then run. Releases are built by GitHub Actions when you push a version tag like `v1.2.3`.
 
-1. Open `Remidor.xcodeproj` in Xcode.
-2. Give the build your own signing team. A free Apple ID is enough, and Reminders access needs a signed build. The simplest way is to create `Config/Local.xcconfig` (git ignores it) containing `DEVELOPMENT_TEAM = YOURTEAMID`. You can also choose the team under *Signing & Capabilities*, but that writes your team ID into the project file. Signing with a real team also means macOS asks for Reminders access only once. Without one, it asks again after every build.
-3. Run. Allow access to your reminders when macOS asks.
-
-Requires macOS 14 (Sonoma) or later and Xcode 16 or later. It runs on both Apple Silicon and Intel Macs.
-
-Remidor is a menu bar app and has no Dock icon. Use **Quit** in the dropdown to close it.
-
-### Publishing a release
-
-Releases are built by GitHub Actions. Push a version tag and the workflow in `.github/workflows/release.yml` runs the tests, builds the app, signs it ad hoc and attaches the zip to a new release. The app's version number comes from the tag, so `v1.2.3` builds Remidor 1.2.3:
-
-```bash
-git tag v1.0.0 && git push origin v1.0.0
-```
-
-## Privacy
-
-Everything stays on your Mac. Remidor reads and changes reminders through Apple's EventKit framework and has no analytics. The only network request it makes is the optional update check, which asks GitHub for the latest release of this project. The request carries only the app's name and version, keeps no cookies or cache, and says nothing about you or your reminders. GitHub sees your IP address, as any website does. You can turn it off in Settings. Remidor runs in the App Sandbox, with access to Reminders and to the network (for that check) as its only extra permissions.
-
-## How it works, and its limits
-
-- **Sub-tasks, tags, flags, manual order and sections** aren't part of EventKit's public API. Remidor reads them through undocumented fields on each reminder and list, and sets flags, the manual order and sub-tasks through the same internal save request EventKit uses (see [`ReminderKit.swift`](Remidor/Model/ReminderKit.swift)). If macOS ever changes them, sub-tasks show as ordinary rows, sections disappear, Manual falls back to sorting by title, tags and flags are hidden, flagging shows an error message, and nothing else breaks. Remidor reads the sections but never changes them, so reminders can't be dragged from one section to another. Dragging changes the manual order through the same internal save request, and a reminder dropped into a list that isn't in manual order lands in the arrangement that list already has behind the scenes, which can differ from what the other sort order showed.
-- **Smart lists.** Apple doesn't expose its smart lists to other apps. Remidor recreates Today, Scheduled and All from due dates. Flagged uses the real flags.
-- **Tags on new reminders.** Apps can't create real Reminders tags, so a `#tag` added in the quick-add box becomes plain text in the title. Existing tags are shown properly.
-- **Opening a list.** "Open" uses Reminders' internal link format and falls back to simply opening the app if that doesn't work.
-- **Delete is permanent.** There's no undo for deleting a reminder, only for completing one.
-
-## Project layout
-
-```
-Remidor/
-├── App/        app entry point and the global-shortcut hookup
-├── Model/      TaskModel (EventKit, timer, undo), value types, sorting, repeats, ReminderKit bridge
-├── Menu/       the dropdown: list, rows, drag and drop, the in-place editor, timer screens, formatting
-├── QuickAdd/   natural-language parser, draft state, the box, the floating panel
-├── Settings/   the Settings window and shortcut recorder
-├── Shared/     DurationPicker
-└── System/     the system-wide hotkey
-```
-
-## Tests
-
-The natural-language parser (including repeats), the ordering rules (manual order, sections, sub-task nesting and folding) and the formatting helpers have unit tests in `RemidorTests`. Run them with ⌘U in Xcode, or:
+Run the tests with ⌘U in Xcode, or:
 
 ```bash
 xcodebuild test -project Remidor.xcodeproj -scheme Remidor -only-testing:RemidorTests
 ```
 
-## Author
+## Privacy
+
+Everything stays on your Mac. Remidor reads and changes reminders through Apple's EventKit and has no analytics. The only network request is the optional update check, which asks GitHub for the latest release and sends only the app's name and version. It runs in the App Sandbox with access to Reminders and the network (for that check) as its only extra permissions.
+
+## Good to know
+
+- **Sub-tasks, tags, flags, manual order and sections** aren't part of EventKit's public API. Remidor reads them through undocumented fields (see [`ReminderKit.swift`](Remidor/Model/ReminderKit.swift)) and writes flags, order and sub-tasks through the same internal save request EventKit uses. If macOS ever changes them, those features quietly switch off and everything else keeps working. Remidor never changes sections, so reminders can't be dragged between sections.
+- **Smart lists** aren't exposed to other apps, so Today, Scheduled and All are rebuilt from due dates. Flagged uses the real flags.
+- **Tags on new reminders** stay plain text in the title, because apps can't create real tags.
+- **Repeating tasks can't be undone** after checking them off, and **deleting is permanent**.
 
 Made by **n9ine**.
