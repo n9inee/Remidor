@@ -209,6 +209,20 @@ struct OrderingTests {
         #expect(smart.entries(foldedParents: [], foldedSections: []).count == 4)
     }
 
+    @Test func subtasksCanHaveAnOrderOfTheirOwn() {
+        var late = placed("late", parent: "p"), early = placed("early", parent: "p")
+        late.title = "b late"; early.title = "a early"
+        late.manualIndex = 1; early.manualIndex = 2
+        let items = [placed("p"), late, early]
+        // Following the list, which here is the incoming order.
+        #expect(items.nestingSubtasks().map(\.id) == ["p", "late", "early"])
+        // A manual order for this parent puts the sub-tasks by their place.
+        #expect(items.nestingSubtasks(childOrder: { _ in .manual }).map(\.id) == ["p", "late", "early"])
+        // By title for this parent only.
+        #expect(items.nestingSubtasks(childOrder: { $0 == "p" ? .title : nil }).map(\.id) == ["p", "early", "late"])
+        #expect(items.nestingSubtasks(childOrder: { $0 == "other" ? .title : nil }).map(\.id) == ["p", "late", "early"])
+    }
+
     @Test func priorityOrderPutsUnprioritisedLast() {
         let items = [item("1", "A"), item("2", "B", priority: 9), item("3", "C", priority: 1)]
         #expect(items.sorted(by: .priority).map(\.id) == ["3", "2", "1"])
@@ -451,6 +465,18 @@ struct DropResolverTests {
         #expect(upTarget.id == "a" && !upAfter)
         // Over itself nothing happens.
         #expect(resolver.target(moving: a, at: CGPoint(x: 100, y: rowA.midY)) == nil)
+    }
+
+    @Test func subtasksReorderAmongTheirSiblings() throws {
+        let parent = item("p", in: list), first = item("k1", in: list, parent: "p"), second = item("k2", in: list, parent: "p")
+        let resolver = resolver([ReminderSection(list: list, items: [parent, first, second])])
+        let row = try #require(resolver.frames.rows["work|k2"])
+        let result = try #require(resolver.target(moving: first, at: CGPoint(x: 100, y: row.maxY - 3)))
+        guard case .reorderSubtask(let target, let after) = result.action else { Issue.record("expected a sub-task reorder"); return }
+        #expect(target.id == "k2" && after)
+        // The middle of a sibling is still just an order, never a new parent.
+        let middle = try #require(resolver.target(moving: first, at: CGPoint(x: 100, y: row.midY)))
+        guard case .reorderSubtask = middle.action else { Issue.record("expected a sub-task reorder"); return }
     }
 
     @Test func middleOfARowMakesASubtask() throws {

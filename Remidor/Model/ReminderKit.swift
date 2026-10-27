@@ -22,6 +22,12 @@ enum ReminderKit {
         return owner.value(forKey: key) as? NSObject
     }
 
+    /// A string property, if the object has it.
+    nonisolated private static func string(_ owner: NSObject, _ key: String) -> String? {
+        guard owner.responds(to: NSSelectorFromString(key)) else { return nil }
+        return owner.value(forKey: key) as? String
+    }
+
     nonisolated private static func reminderObject(of reminder: EKReminder) -> NSObject? {
         object(reminder, "backingObject").flatMap { object($0, "REMObject") }
     }
@@ -157,10 +163,7 @@ enum ReminderKit {
     nonisolated static func sectionLookup(for calendars: [EKCalendar], in store: EKEventStore) -> [String: SectionLookup] {
         guard let reminderStore = object(store, "reminderStore"),
               let remStore = object(reminderStore, "remStore"),
-              let viewClass = NSClassFromString("REMListSectionsDataView") as? NSObject.Type,
-              let allocated = viewClass.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject,
-              allocated.responds(to: NSSelectorFromString("initWithStore:")),
-              let dataView = allocated.perform(NSSelectorFromString("initWithStore:"), with: remStore)?.takeUnretainedValue() as? NSObject
+              let dataView = sectionsDataView(for: remStore)
         else { return [:] }
 
         var lookups: [String: SectionLookup] = [:]
@@ -175,13 +178,28 @@ enum ReminderKit {
             var sections: [String: ListSection] = [:]
             for (index, section) in found.enumerated() {
                 guard let uuid = sectionUUID(section),
-                      let title = object(section, "storage").flatMap({ $0.value(forKey: "displayName") as? String })
+                      let title = object(section, "storage").flatMap({ string($0, "displayName") })
                 else { continue }
                 sections[uuid] = ListSection(id: uuid, title: title, index: index)
             }
             if !sections.isEmpty { lookups[calendar.calendarIdentifier] = SectionLookup(dataView: dataView, sections: sections) }
         }
         return lookups
+    }
+
+    /// The object that answers which section a reminder is in. It is made once and kept, since the lists are
+    /// read again every minute and it only depends on the store.
+    nonisolated(unsafe) private static var cachedDataView: (store: NSObject, view: NSObject)?
+
+    nonisolated private static func sectionsDataView(for remStore: NSObject) -> NSObject? {
+        if let cached = cachedDataView, cached.store === remStore { return cached.view }   // holding the store keeps it alive
+        guard let viewClass = NSClassFromString("REMListSectionsDataView") as? NSObject.Type,
+              let allocated = viewClass.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject,
+              allocated.responds(to: NSSelectorFromString("initWithStore:")),
+              let view = allocated.perform(NSSelectorFromString("initWithStore:"), with: remStore)?.takeUnretainedValue() as? NSObject
+        else { return nil }
+        cachedDataView = (remStore, view)
+        return view
     }
 
     nonisolated fileprivate static func sectionUUID(_ section: NSObject) -> String? {
@@ -234,7 +252,7 @@ enum ReminderKit {
     /// The list's sections, in order.
     nonisolated static func sections(of calendar: EKCalendar, in store: EKEventStore) -> [ListSection] {
         sectionObjects(of: calendar, in: store).enumerated().compactMap { index, entry in
-            object(entry.object, "storage").flatMap { $0.value(forKey: "displayName") as? String }
+            object(entry.object, "storage").flatMap { string($0, "displayName") }
                 .map { ListSection(id: entry.uuid, title: $0, index: index) }
         }
     }
@@ -312,6 +330,23 @@ enum ReminderKit {
         _ = editing.context.perform(NSSelectorFromString("setUnsavedSectionIDsOrdering:"), with: ordered as NSArray)
         editing.context.setValue(true, forKey: "shouldUpdateSectionsOrdering")
         return commit(editing.request)
+    }
+
+    /// Puts a sub-task right before or after another sub-task of the same parent.
+    nonisolated static func moveSubtask(_ child: EKReminder, of parent: EKReminder, nextTo anchor: EKReminder, after: Bool, in store: EKEventStore) -> Bool {
+        guard let childRem = reminderObject(of: child),
+              let parentRem = reminderObject(of: parent),
+              let anchorRem = reminderObject(of: anchor),
+              let request = saveRequest(in: store),
+              let parentChange = changeItem("updateReminder:", for: parentRem, in: request),
+              let moving = changeItem("updateReminder:", for: childRem, in: request),
+              let target = changeItem("updateReminder:", for: anchorRem, in: request),
+              let context = object(parentChange, "subtaskContext") else { return false }
+        let insert = NSSelectorFromString(after ? "insertReminderChangeItem:afterReminderChangeItem:"
+                                                : "insertReminderChangeItem:beforeReminderChangeItem:")
+        guard context.responds(to: insert) else { return false }
+        _ = context.perform(insert, with: moving, with: target)
+        return commit(request)
     }
 
     /// Takes a sub-task out of its parent and puts it, as an ordinary reminder, next to another one of the list.

@@ -46,6 +46,17 @@ final class QuickAddDraft {
         self.model = model
     }
 
+    /// The list this draft always goes to, for adding in place to a list, a section or under a parent. Typed
+    /// `~lists` are then just text, and the list button is left out.
+    var lockedListID: String?
+
+    /// A draft for adding to one particular list.
+    convenience init(adding listID: String, model: TaskModel) {
+        self.init(model: model)
+        lockedListID = listID
+        pickedListID = listID
+    }
+
     /// A draft that starts as an existing reminder.
     convenience init(editing item: ReminderItem, model: TaskModel) {
         self.init(model: model)
@@ -84,6 +95,7 @@ final class QuickAddDraft {
 
     var list: ReminderList? {
         let lists = realLists
+        if let lockedListID, let match = lists.first(where: { $0.id == lockedListID }) { return match }
         if let name = parsed.listName, let match = lists.first(where: { $0.title == name }) { return match }
         if let id = pickedListID, let match = lists.first(where: { $0.id == id }) { return match }
         return lists.first { $0.id == model.defaultListID }
@@ -108,7 +120,7 @@ final class QuickAddDraft {
             untouched.title = text
             parsed = untouched
         } else {
-            parsed = QuickAddParser.parse(text, listNames: realLists.map(\.title))
+            parsed = QuickAddParser.parse(text, listNames: lockedListID == nil ? realLists.map(\.title) : [])
         }
     }
 
@@ -133,6 +145,7 @@ final class QuickAddDraft {
             return query.isEmpty && !pickedFlag ? [Suggestion(label: "Flag", flag: true)] : []
         }
         if token.trigger == "~" {
+            guard lockedListID == nil else { return [] }
             return realLists
                 .filter { query.isEmpty || $0.title.lowercased().contains(query) }
                 .prefix(5)
@@ -177,6 +190,19 @@ final class QuickAddDraft {
         }
         removeTokens(where: { _ in true })
         return true
+    }
+
+    /// Takes the first open suggestion and everything recognized in the text onto the chips, which is what Tab
+    /// and Return do before anything else. Returns false if there was nothing to take in.
+    @discardableResult
+    func absorbTyped() -> Bool {
+        var absorbed = false
+        if let first = suggestions.first {
+            apply(first)
+            absorbed = true
+        }
+        if commitTyped() { absorbed = true }
+        return absorbed
     }
 
     // MARK: Button choices

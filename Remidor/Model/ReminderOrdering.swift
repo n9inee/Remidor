@@ -42,11 +42,15 @@ extension Array where Element == ReminderItem {
     }
 
     /// Puts each sub-task directly under its parent. A sub-task whose parent isn't in this list stays top-level.
-    func nestingSubtasks() -> [ReminderItem] {
+    /// Sub-tasks keep the order of the list, unless `childOrder` names an order of their own for a parent.
+    func nestingSubtasks(childOrder: (String) -> SortOrder? = { _ in nil }) -> [ReminderItem] {
         let ids = Set(map(\.id))
         func hasParentHere(_ item: ReminderItem) -> Bool { item.parentID.map(ids.contains) ?? false }
 
-        let children = Dictionary(grouping: filter(hasParentHere)) { $0.parentID! }
+        var children = Dictionary(grouping: filter(hasParentHere)) { $0.parentID! }
+        for (parent, items) in children {
+            if let order = childOrder(parent) { children[parent] = items.sorted(by: order) }
+        }
         var result: [ReminderItem] = []
         var visited = Set<String>()
 

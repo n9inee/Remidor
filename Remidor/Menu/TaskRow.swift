@@ -18,6 +18,12 @@ struct TaskRow: View {
     @State private var expanded = false
     @State private var confirmingDelete = false
     @State private var editing = false
+    @State private var addingSubtask = false
+
+    /// The order of the list this reminder is in, which its sub-tasks follow unless told otherwise.
+    private var listOrder: SortOrder {
+        model.lists.first { $0.id == item.listID }.map(model.sortOrder(for:)) ?? model.sortOrder
+    }
 
     private var hasDetails: Bool { item.notes != nil || item.url != nil || !item.tags.isEmpty }
 
@@ -31,6 +37,12 @@ struct TaskRow: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
             } else {
                 header
+                if addingSubtask {
+                    TaskComposer(model: model, listID: item.listID, parent: item, placeholder: "New sub-task") {
+                        withAnimation(.snappy(duration: 0.2)) { addingSubtask = false }
+                    }
+                    .padding(.leading, 20).padding(.trailing, 6)
+                }
                 if expanded {
                     TaskDetails(item: item)
                         .padding(.leading, 30).padding(.trailing, 8).padding(.bottom, 8)
@@ -51,6 +63,10 @@ struct TaskRow: View {
     @ViewBuilder private var contextMenu: some View {
         Button("Open") { model.openInReminders(item) }
         Button("Edit") { editing = true }
+        // Reminders only goes one level deep, so a sub-task can't have sub-tasks of its own.
+        if item.parentID == nil {
+            Button("Add Sub-task…") { withAnimation(.snappy(duration: 0.2)) { addingSubtask = true } }
+        }
         Menu("Date") {
             Button("Today") { model.setDay(item, to: Date()) }
             Button("Tomorrow") { model.setDay(item, to: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()) }
@@ -72,6 +88,13 @@ struct TaskRow: View {
             ForEach(model.lists.filter { !$0.isSmart }) { list in
                 Button { model.move(item, toListID: list.id) } label: {
                     if list.id == item.listID { Label(list.title, systemImage: "checkmark") } else { Text(list.title) }
+                }
+            }
+        }
+        if item.childCount > 0 {
+            Menu("Sort Sub-tasks") {
+                SortChoices(current: model.subtaskSortOrders[item.id], inherited: listOrder, inheritedTitle: "Same as the List") {
+                    model.setSubtaskOrder($0, for: item)
                 }
             }
         }

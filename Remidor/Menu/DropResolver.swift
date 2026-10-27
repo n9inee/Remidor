@@ -51,7 +51,7 @@ struct DropResolver {
                     let fraction = rect.height > 0 ? (location.y - rect.minY) / rect.height : 0.5
                     guard let result = action(for: moving, on: section.list, row: item, fraction: fraction) else { return nil }
                     switch result {
-                    case .reorder, .subtask, .promote:
+                    case .reorder, .subtask, .promote, .reorderSubtask:
                         return DropTarget(action: result, rect: rect)
                     case .section(let id, _):
                         // Moving to another section lights up that section's heading.
@@ -84,7 +84,10 @@ struct DropResolver {
             if isChild { return .promote(nextTo: nil, after: true) }
             return moving.sectionID == nil ? nil : .section(id: nil, title: nil)
         }
-        guard moving.id != target.id, target.parentID == nil else { return nil }
+        guard moving.id != target.id else { return nil }
+        // Another sub-task of the same parent: the order of the sub-tasks.
+        if isChild, target.parentID == moving.parentID { return .reorderSubtask(target: target, after: fraction >= 0.5) }
+        guard target.parentID == nil else { return nil }
 
         let middle = (0.28...0.72).contains(fraction)
         if isChild {

@@ -31,6 +31,8 @@ struct TaskList: View {
     @State private var escapeMonitor: Any?
     /// The list getting a new section, and the section being renamed.
     @State private var addingSectionTo: String?
+    /// The list, or the section ("list|section"), a reminder is being added to.
+    @State private var addingTaskTo: String?
     @State private var renamingSection: String?
 
     private static let defaultMaxHeight = 320.0
@@ -99,8 +101,18 @@ struct TaskList: View {
                onDelete: section.list.isSmart ? nil : { withAnimation(Self.quick) { deletingList = section.id } })
             .contextMenu {
                 if !section.list.isSmart {
+                    Button("Add Reminder…") { withAnimation(Self.quick) { addingTaskTo = section.id } }
                     Button("New Section…") { withAnimation(Self.quick) { addingSectionTo = section.id } }
                     Button("Rename List…") { withAnimation(Self.quick) { renamingList = section.id } }
+                }
+                // Today and Scheduled always sort by time, so there is nothing to choose for them.
+                if !SmartList.sortsByTime(section.list) {
+                    Menu("Sort By") {
+                        SortChoices(current: model.listSortOrders[section.list.id], inherited: model.sortOrder,
+                                    inheritedTitle: "Same as the Rest") { model.setSortOrder($0, for: section.list) }
+                    }
+                }
+                if !section.list.isSmart {
                     Divider()
                     Button("Delete List…", role: .destructive) { withAnimation(Self.quick) { deletingList = section.id } }
                 }
@@ -113,6 +125,11 @@ struct TaskList: View {
             ListDeleteConfirmation(title: section.list.title, onCancel: { withAnimation(Self.quick) { deletingList = nil } }) {
                 model.deleteList(section.list)
                 withAnimation(Self.quick) { deletingList = nil }
+            }
+        }
+        if addingTaskTo == section.id {
+            TaskComposer(model: model, listID: section.id, placeholder: "New reminder") {
+                withAnimation(Self.quick) { addingTaskTo = nil }
             }
         }
         if addingSectionTo == section.id {
@@ -140,6 +157,7 @@ struct TaskList: View {
                         SubheadingRow(title: info.title, count: count, folded: folded, onToggle: {
                             if !justDragged { withAnimation(.snappy(duration: 0.4)) { model.toggleSection(info.id) } }
                         }, onRename: { withAnimation(Self.quick) { renamingSection = info.id } },
+                           onAddReminder: { withAnimation(Self.quick) { addingTaskTo = section.id + "|" + info.id } },
                            onMove: { model.moveSection(info.id, in: section.list, by: $0) },
                            canMoveUp: info.index > 0, canMoveDown: info.index < section.sections.count - 1,
                            onDelete: { model.deleteSection(info.id, in: section.list) })
@@ -147,6 +165,11 @@ struct TaskList: View {
                         .onDisappear { frames.headings[section.id + "|" + info.id] = nil }
                         .opacity(sectionDrag?.section.id == info.id && sectionDrag?.listID == section.id ? 0 : 1)
                         .simultaneousGesture(sectionDragGesture(info, in: section))
+                    }
+                    if addingTaskTo == section.id + "|" + info.id {
+                        TaskComposer(model: model, listID: section.list.id, sectionID: info.id, placeholder: "New reminder in \(info.title)") {
+                            withAnimation(Self.quick) { addingTaskTo = nil }
+                        }
                     }
                 case .noSection:
                     SubheadingRow(title: "No Section", count: 0, folded: false, onToggle: {}, foldable: false)
@@ -218,21 +241,29 @@ struct TaskList: View {
                     y: rect.minY + translation.height - scrollHandle.offset)
     }
 
-    /// Picking a reminder up and carrying it. The row follows the mouse; what is under it lights up.
-    private func dragGesture(_ item: ReminderItem, in section: ReminderSection) -> some Gesture {
+    /// Picking something up with the mouse and carrying it: reminders, section headings and list names all
+    /// go through this. `begin` records what was picked up, and from then on the mouse is followed.
+    private func carryGesture(begin: @escaping (_ start: CGPoint, _ pointer: CGPoint) -> Void) -> some Gesture {
         DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.space))
             .onChanged { value in
-                if drag == nil {
-                    guard !dragCancelled, sectionDrag == nil, listDrag == nil, let pointer = scrollHandle.pointer else { return }
-                    // The mouse has already moved a few points; the row starts from where it was pressed.
-                    let start = CGPoint(x: pointer.x - value.translation.width, y: pointer.y - value.translation.height)
-                    drag = TaskDrag(item: item, sectionID: section.id, start: start, location: pointer,
-                                    rect: frames.rows[section.id + "|" + item.id] ?? Self.fallbackRect(near: start))
+                if !isCarrying {
+                    guard !dragCancelled, let pointer = scrollHandle.pointer else { return }
+                    // The mouse has already moved a few points; what is carried starts from where it was pressed.
+                    begin(CGPoint(x: pointer.x - value.translation.width, y: pointer.y - value.translation.height), pointer)
                     startFollowing()
                 }
                 followMouse()
             }
             .onEnded { _ in dragCancelled = false; finishDrag() }
+    }
+
+    private var isCarrying: Bool { drag != nil || sectionDrag != nil || listDrag != nil }
+
+    private func dragGesture(_ item: ReminderItem, in section: ReminderSection) -> some Gesture {
+        carryGesture { start, pointer in
+            drag = TaskDrag(item: item, sectionID: section.id, start: start, location: pointer,
+                            rect: frames.rows[section.id + "|" + item.id] ?? Self.fallbackRect(near: start))
+        }
     }
 
     private func startFollowing() {
@@ -256,7 +287,7 @@ struct TaskList: View {
     /// Moves the carried row to the mouse and scrolls the list when the mouse is near its top or bottom edge,
     /// or past it.
     private func followMouse() {
-        guard drag != nil || sectionDrag != nil || listDrag != nil, let pointer = scrollHandle.pointer else { return }
+        guard isCarrying, let pointer = scrollHandle.pointer else { return }
         // Esc is read straight from the keyboard, so it works however the keys reach the app.
         if CGEventSource.keyState(.combinedSessionState, key: 0x35) { return cancelDrag() }
         // The mouse button was let go somewhere the gesture didn't hear about.
@@ -287,7 +318,7 @@ struct TaskList: View {
 
     /// Drops whatever is being carried without doing anything with it.
     private func cancelDrag() {
-        guard drag != nil || sectionDrag != nil || listDrag != nil else { return }
+        guard isCarrying else { return }
         dragLoop?.cancel()
         dragLoop = nil
         stopWatchingKeys()
@@ -334,38 +365,23 @@ struct TaskList: View {
         case .today: model.setDay(item, to: Date())
         case .subtask(let parent): model.makeSubtask(item, of: parent)
         case .promote(let target, let after): model.promote(item, nextTo: target, after: after)
+        case .reorderSubtask(let target, let after): model.reorderSubtask(item, nextTo: target, after: after)
         case .section(let id, _): model.move(item, toSection: id)
         }
     }
 
     private func listDragGesture(_ section: ReminderSection) -> some Gesture {
-        DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.space))
-            .onChanged { value in
-                if listDrag == nil {
-                    guard !dragCancelled, drag == nil, sectionDrag == nil, let pointer = scrollHandle.pointer else { return }
-                    let start = CGPoint(x: pointer.x - value.translation.width, y: pointer.y - value.translation.height)
-                    listDrag = ListDrag(listID: section.id, start: start, location: pointer,
-                                    rect: frames.headers[section.id] ?? Self.fallbackRect(near: start))
-                    startFollowing()
-                }
-                followMouse()
-            }
-            .onEnded { _ in dragCancelled = false; finishDrag() }
+        carryGesture { start, pointer in
+            listDrag = ListDrag(listID: section.id, start: start, location: pointer,
+                                rect: frames.headers[section.id] ?? Self.fallbackRect(near: start))
+        }
     }
 
     private func sectionDragGesture(_ info: ReminderKit.ListSection, in section: ReminderSection) -> some Gesture {
-        DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.space))
-            .onChanged { value in
-                if sectionDrag == nil {
-                    guard !dragCancelled, drag == nil, listDrag == nil, let pointer = scrollHandle.pointer else { return }
-                    let start = CGPoint(x: pointer.x - value.translation.width, y: pointer.y - value.translation.height)
-                    sectionDrag = SectionDrag(section: info, listID: section.id, start: start, location: pointer,
-                                              rect: frames.headings[section.id + "|" + info.id] ?? Self.fallbackRect(near: start))
-                    startFollowing()
-                }
-                followMouse()
-            }
-            .onEnded { _ in dragCancelled = false; finishDrag() }
+        carryGesture { start, pointer in
+            sectionDrag = SectionDrag(section: info, listID: section.id, start: start, location: pointer,
+                                      rect: frames.headings[section.id + "|" + info.id] ?? Self.fallbackRect(near: start))
+        }
     }
 
     /// The line or outline showing where the carried thing would land.
@@ -385,6 +401,10 @@ struct TaskList: View {
                 Capsule().fill(Color.accentColor)
                     .frame(width: max(rect.width - 12, 0), height: 3)
                     .offset(x: rect.minX + 6, y: (after ? rect.maxY : rect.minY) - 1.5)
+            } else if case .reorderSubtask(_, let after) = target.action {
+                Capsule().fill(Color.accentColor)
+                    .frame(width: max(rect.width - 32, 0), height: 3)
+                    .offset(x: rect.minX + 26, y: (after ? rect.maxY : rect.minY) - 1.5)
             } else if case .promote(let anchor, let after) = target.action, anchor != nil {
                 Capsule().fill(Color.accentColor)
                     .frame(width: max(rect.width - 12, 0), height: 3)
@@ -526,6 +546,7 @@ private struct SubheadingRow: View {
     let folded: Bool
     let onToggle: () -> Void
     var onRename: () -> Void = {}
+    var onAddReminder: () -> Void = {}
     var onMove: (Int) -> Void = { _ in }
     var canMoveUp = false
     var canMoveDown = false
@@ -573,6 +594,7 @@ private struct SubheadingRow: View {
         .padding(.top, 6)
         .onHover { hovering = $0 }
         .contextMenu {
+            Button("Add Reminder…", action: onAddReminder)
             Button("Rename…", action: onRename)
             Button("Move Up") { onMove(-1) }.disabled(!canMoveUp)
             Button("Move Down") { onMove(1) }.disabled(!canMoveDown)
@@ -691,5 +713,25 @@ private struct ListDeleteConfirmation: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.12)))
         .transition(.opacity.combined(with: .scale(scale: 0.97)))
+    }
+}
+
+/// The sort orders to pick from in a menu, with a checkmark on the one in use. `nil` means "follow the rest".
+struct SortChoices: View {
+    let current: SortOrder?
+    let inherited: SortOrder
+    let inheritedTitle: String
+    let choose: (SortOrder?) -> Void
+
+    var body: some View {
+        Button { choose(nil) } label: {
+            if current == nil { Label("\(inheritedTitle) (\(inherited.label))", systemImage: "checkmark") } else { Text("\(inheritedTitle) (\(inherited.label))") }
+        }
+        Divider()
+        ForEach(SortOrder.allCases) { order in
+            Button { choose(order) } label: {
+                if current == order { Label(order.label, systemImage: "checkmark") } else { Text(order.label) }
+            }
+        }
     }
 }

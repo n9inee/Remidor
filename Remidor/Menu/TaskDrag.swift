@@ -56,6 +56,8 @@ enum DropAction {
     case today
     /// Dropped on the middle of another reminder: becomes its sub-task.
     case subtask(of: ReminderItem)
+    /// A sub-task put next to another sub-task of the same parent.
+    case reorderSubtask(target: ReminderItem, after: Bool)
     /// A sub-task taken out of its parent, placed next to a reminder of the list (or just left in place).
     case promote(nextTo: ReminderItem?, after: Bool)
     /// Dropped on a section's heading, or on a reminder of another section: moves into that section.
@@ -63,7 +65,7 @@ enum DropAction {
 
     var label: String {
         switch self {
-        case .reorder: ""
+        case .reorder, .reorderSubtask: ""
         case .move: "Move here"
         case .flag: "Flag it"
         case .today: "Due today"

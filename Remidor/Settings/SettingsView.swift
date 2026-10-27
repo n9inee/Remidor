@@ -240,15 +240,7 @@ private struct ListRow: View {
     private var sortMenu: some View {
         let own = model.listSortOrders[list.id]
         return Menu {
-            Button { model.setSortOrder(nil, for: list) } label: {
-                if own == nil { Label("Same as the rest", systemImage: "checkmark") } else { Text("Same as the rest") }
-            }
-            Divider()
-            ForEach(SortOrder.allCases) { order in
-                Button { model.setSortOrder(order, for: list) } label: {
-                    if own == order { Label(order.label, systemImage: "checkmark") } else { Text(order.label) }
-                }
-            }
+            SortChoices(current: own, inherited: model.sortOrder, inheritedTitle: "Same as the Rest") { model.setSortOrder($0, for: list) }
         } label: {
             Image(systemName: "arrow.up.arrow.down")
                 .font(.caption)

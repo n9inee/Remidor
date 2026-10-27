@@ -165,12 +165,7 @@ struct QuickAddView: View {
     /// recognized (coloured) token, which all move out of the text and onto the chips.
     /// Returns false if there was nothing to take in.
     private func absorbTyped() -> Bool {
-        var absorbed = false
-        if let first = draft.suggestions.first {
-            draft.apply(first)
-            absorbed = true
-        }
-        if draft.commitTyped() { absorbed = true }
+        let absorbed = draft.absorbTyped()
         if absorbed { focusTrigger += 1 }
         return absorbed
     }

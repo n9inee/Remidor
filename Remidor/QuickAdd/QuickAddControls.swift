@@ -63,6 +63,7 @@ struct QuickAddControls: View {
             .help(draft.flagged ? "Remove the flag" : "Flag this reminder")
             .accessibilityLabel(draft.flagged ? "Remove the flag" : "Flag this reminder")
 
+            if draft.lockedListID == nil {
             Menu {
                 ForEach(draft.realLists) { list in
                     Button(list.title) { draft.setList(list.id) }
@@ -77,6 +78,7 @@ struct QuickAddControls: View {
                 .background(Capsule().fill(Color.primary.opacity(0.08)))
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            }
 
             Spacer(minLength: 0)
         }

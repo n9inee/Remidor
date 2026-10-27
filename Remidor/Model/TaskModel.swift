@@ -83,6 +83,23 @@ final class TaskModel {
 
     func sortOrder(for list: ReminderList) -> SortOrder { listSortOrders[list.id] ?? sortOrder }
 
+    /// Orders chosen for the sub-tasks of single reminders, by the parent's id. Without one, sub-tasks follow
+    /// their list's order.
+    var subtaskSortOrders: [String: SortOrder] = {
+        let saved = UserDefaults.standard.dictionary(forKey: DefaultsKey.subtaskSortOrders) as? [String: String] ?? [:]
+        return saved.compactMapValues(SortOrder.init(rawValue:))
+    }() {
+        didSet {
+            UserDefaults.standard.set(subtaskSortOrders.mapValues(\.rawValue), forKey: DefaultsKey.subtaskSortOrders)
+            scheduleRefresh()
+        }
+    }
+
+    /// nil goes back to the list's order.
+    func setSubtaskOrder(_ order: SortOrder?, for parent: ReminderItem) {
+        subtaskSortOrders[parent.id] = order
+    }
+
     /// How many lists have an order of their own that differs from the common one.
     var listsWithOwnOrder: Int {
         lists.filter { !$0.isSmart || !SmartList.sortsByTime($0) }.filter { listSortOrders[$0.id].map { $0 != sortOrder } ?? false }.count
@@ -227,6 +244,7 @@ final class TaskModel {
         // The order and sections the user made in Reminders are only read when something needs them.
         let selected = lists.filter { isSelected($0) && !$0.isSmart }
         let needsManual = lists.contains { isSelected($0) && sortOrder(for: $0) == .manual }
+            || subtaskSortOrders.values.contains(.manual)
         // Looked up again by identifier, because the list objects can hold on to an older arrangement.
         let manual = needsManual ? Dictionary(calendars.map { ($0.calendarIdentifier, ReminderKit.manualOrder(of: store.calendar(withIdentifier: $0.calendarIdentifier) ?? $0)) },
                                               uniquingKeysWith: { first, _ in first }) : [:]
@@ -331,7 +349,7 @@ final class TaskModel {
             }
             // Sections only exist inside one list.
             if !list.isSmart { ordered = ordered.groupedBySection() }
-            return ReminderSection(list: list, items: ordered.nestingSubtasks(), sections: list.isSmart ? [] : listSections[list.id] ?? [])
+            return ReminderSection(list: list, items: ordered.nestingSubtasks(childOrder: { subtaskSortOrders[$0] }), sections: list.isSmart ? [] : listSections[list.id] ?? [])
         }
     }
 
@@ -382,7 +400,9 @@ final class TaskModel {
 
     // MARK: Changing reminders
 
-    func addReminder(_ new: NewReminder) async -> Bool {
+    /// Adds a reminder. With a parent it becomes that reminder's sub-task, and with a section id it is put into
+    /// that section of its list.
+    func addReminder(_ new: NewReminder, parent: ReminderItem? = nil, sectionID: String? = nil) async -> Bool {
         guard EKEventStore.authorizationStatus(for: .reminder) == .fullAccess else {
             report("Remidor can't reach your reminders. Allow access in System Settings → Privacy & Security → Reminders.")
             return false
@@ -405,24 +425,55 @@ final class TaskModel {
         if new.flagged, !ReminderKit.setFlagged(true, for: reminder, in: store) {
             report("Added “\(new.title)”, but couldn't flag it.")
         }
+        // So can its place under a parent or in a section.
+        if let parent {
+            if let parentReminder = self.reminder(withID: parent.id), ReminderKit.makeSubtask(reminder, of: parentReminder, in: store) {
+                collapsedParentIDs.remove(parent.id)
+            } else {
+                report("Added “\(new.title)”, but couldn't make it a sub-task.")
+            }
+        } else if let sectionID, !ReminderKit.move(reminder, toSection: sectionID, in: calendar, in: store) {
+            report("Added “\(new.title)”, but couldn't put it in that section.")
+        }
         await refresh()
         return true
     }
 
     /// The reminder one step up (-1) or down (+1) among those at the same level and in the same section of
-    /// its own list, as shown. Sub-tasks are left out.
+    /// its own list, as shown. A sub-task is compared with the other sub-tasks of its parent.
     func neighbor(of item: ReminderItem, offset: Int) -> ReminderItem? {
-        guard item.parentID == nil,
-              let section = sections.first(where: { $0.list.id == item.listID }) else { return nil }
-        let siblings = section.items.filter { $0.parentID == nil && $0.sectionID == item.sectionID }
+        guard let section = sections.first(where: { $0.list.id == item.listID }) else { return nil }
+        let siblings = section.items.filter { $0.parentID == item.parentID && $0.sectionID == item.sectionID }
         guard let index = siblings.firstIndex(where: { $0.id == item.id }), siblings.indices.contains(index + offset) else { return nil }
         return siblings[index + offset]
     }
 
-    /// Moves a reminder one step up or down in its list, which puts the list in manual order.
+    /// Moves a reminder one step up or down in its list, which puts the list in manual order. A sub-task moves
+    /// among its parent's sub-tasks, and puts only those in manual order.
     func moveReminder(_ item: ReminderItem, by offset: Int) {
         guard let neighbor = neighbor(of: item, offset: offset) else { return }
-        reorder(item, nextTo: neighbor, after: offset > 0)
+        if item.parentID != nil { reorderSubtask(item, nextTo: neighbor, after: offset > 0) } else { reorder(item, nextTo: neighbor, after: offset > 0) }
+    }
+
+    /// Puts a sub-task next to another sub-task of the same parent. By hand means manual: that parent's
+    /// sub-tasks switch to manual order, whatever the list does.
+    func reorderSubtask(_ item: ReminderItem, nextTo target: ReminderItem, after: Bool) {
+        guard let parentID = item.parentID, target.parentID == parentID, item.id != target.id else { return }
+        guard let child = reminder(withID: item.id), let parent = reminder(withID: parentID), let anchor = reminder(withID: target.id) else {
+            report("That reminder no longer exists.")
+            scheduleRefresh()
+            return
+        }
+        guard ReminderKit.moveSubtask(child, of: parent, nextTo: anchor, after: after, in: store) else {
+            report("Couldn't change the order of “\(item.title)”.")
+            scheduleRefresh()
+            return
+        }
+        if subtaskSortOrders[parentID] != .manual {
+            subtaskSortOrders[parentID] = .manual   // refreshes by itself
+        } else {
+            scheduleRefresh()
+        }
     }
 
     /// Takes a sub-task out of its parent, leaving it at the top level next to that parent. Does nothing for
@@ -664,7 +715,12 @@ final class TaskModel {
             store.reset()
             report("Couldn't delete the list “\(list.title)”.")
         }
+        // Forget what was kept for the list.
         if preferredListID == list.id { preferredListID = nil }
+        listSortOrders[list.id] = nil
+        collapsedListIDs.remove(list.id)
+        listOrder.removeAll { $0 == list.id }
+        selectedListIDs?.remove(list.id)
         scheduleRefresh()
     }
 
