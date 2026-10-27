@@ -33,6 +33,8 @@ struct TaskList: View {
     @State private var addingSectionTo: String?
     /// The list, or the section ("list|section"), a reminder is being added to.
     @State private var addingTaskTo: String?
+    /// Reminders open in their edit box, which can't be picked up.
+    @State private var editingIDs: Set<String> = []
     @State private var renamingSection: String?
 
     private static let defaultMaxHeight = 320.0
@@ -177,11 +179,12 @@ struct TaskList: View {
                         .onDisappear { frames.headings[section.id + "|none"] = nil }
                 case .item(let item):
                     let carried = drag?.item.id == item.id && drag?.sectionID == section.id
-                    TaskRow(item: item, model: model, start: { if !justDragged { onStart(item) } }, done: { model.completeOnly(item) })
+                    TaskRow(item: item, model: model, start: { if !justDragged { onStart(item) } }, done: { model.completeOnly(item) },
+                            onEditing: { if $0 { editingIDs.insert(item.id) } else { editingIDs.remove(item.id) } })
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.rows[section.id + "|" + item.id] = $0 }
-                        .onDisappear { frames.rows[section.id + "|" + item.id] = nil }
+                        .onDisappear { frames.rows[section.id + "|" + item.id] = nil; editingIDs.remove(item.id) }
                         .opacity(carried ? 0 : 1)
-                        .simultaneousGesture(dragGesture(item, in: section))
+                        .simultaneousGesture(dragGesture(item, in: section), including: editingIDs.contains(item.id) ? .subviews : .all)
                         .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)),
                                                 removal: .opacity.combined(with: .scale(scale: 0.95))))
                 }
@@ -211,7 +214,7 @@ struct TaskList: View {
     @ViewBuilder private var carriedCopy: some View {
         if let drag {
             carried(rect: drag.rect, translation: drag.translation) {
-                TaskRow(item: drag.item, model: model, start: {}, done: {})
+                TaskRow(item: drag.item, model: model, start: {}, done: {}, onEditing: { _ in })
             }
         } else if let sectionDrag {
             carried(rect: sectionDrag.rect, translation: sectionDrag.translation) {

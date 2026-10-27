@@ -14,6 +14,8 @@ struct TaskRow: View {
     let model: TaskModel
     let start: () -> Void
     let done: () -> Void
+    /// Tells the list when the edit box opens or closes.
+    var onEditing: (Bool) -> Void = { _ in }
     @State private var hovering = false
     @State private var expanded = false
     @State private var confirmingDelete = false
@@ -57,6 +59,7 @@ struct TaskRow: View {
         .animation(.snappy(duration: 0.4), value: expanded)
         .animation(.snappy(duration: 0.4), value: confirmingDelete)
         .animation(.snappy(duration: 0.4), value: editing)
+        .onChange(of: editing) { _, now in onEditing(now) }
         .animation(.snappy(duration: 0.3), value: hovering)
     }
 
