@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var launchAtLogin = LaunchAtLogin.shared
     @State private var updates = UpdateChecker.shared
     @State private var leftColumnHeight: CGFloat = 0
+    @State private var creatingList = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -32,6 +33,16 @@ struct SettingsView: View {
                         Text("Manual keeps the order you made in Reminders. A single list can have its own order, using the arrows next to it.")
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 8) {
+                            Button("Use for every list") { model.applySortOrderToAllLists() }
+                                .controlSize(.small)
+                                .disabled(model.listSortOrders.isEmpty)
+                                .help("Gives every list this order again, so none keeps one of its own.")
+                            if model.listsWithOwnOrder > 0 {
+                                Text(model.listsWithOwnOrder == 1 ? "1 list has its own" : "\(model.listsWithOwnOrder) lists have their own")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
@@ -157,7 +168,23 @@ struct SettingsView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .animation(.snappy(duration: 0.4), value: model.lists.map(\.id))
+            newListFooter
         }
+        .animation(.snappy(duration: 0.4), value: creatingList)
+    }
+
+    /// A button for making a new list, which turns into a name box with colours to choose from.
+    private var newListFooter: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if creatingList {
+                NewListForm(model: model) { creatingList = false }
+            } else {
+                Button { creatingList = true } label: { Label("New List…", systemImage: "plus") }
+                    .controlSize(.small)
+                    .disabled(model.accessDenied)
+            }
+        }
+        .padding(.horizontal, 8).padding(.bottom, 8)
     }
 }
 
@@ -166,7 +193,21 @@ private struct ListRow: View {
     let model: TaskModel
     let list: ReminderList
 
+    @State private var renaming = false
+    @State private var confirmingDelete = false
+
     var body: some View {
+        if renaming {
+            NameField(initial: list.title, placeholder: "List name", onSubmit: { name in
+                model.renameList(list, to: name)
+                renaming = false
+            }, onCancel: { renaming = false })
+        } else {
+            row
+        }
+    }
+
+    private var row: some View {
         HStack(spacing: 8) {
             Image(systemName: "line.3.horizontal").font(.caption).foregroundStyle(.tertiary)
             Toggle(isOn: Binding(get: { model.isSelected(list) }, set: { model.setList(list, selected: $0) })) {
@@ -181,6 +222,18 @@ private struct ListRow: View {
             if !list.isSmart { defaultButton }
         }
         .padding(.vertical, 2)
+        .contextMenu {
+            if !list.isSmart {
+                Button("Rename…") { renaming = true }
+                Divider()
+                Button("Delete List…", role: .destructive) { confirmingDelete = true }
+            }
+        }
+        .confirmationDialog("Delete “\(list.title)”?", isPresented: $confirmingDelete) {
+            Button("Delete List and Its Reminders", role: .destructive) { model.deleteList(list) }
+        } message: {
+            Text("This also deletes every reminder in it, in the Reminders app too. It can't be undone.")
+        }
     }
 
     /// Lets this list use its own sort order instead of the common one.

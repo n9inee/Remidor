@@ -18,10 +18,6 @@ struct TaskRow: View {
     @State private var expanded = false
     @State private var confirmingDelete = false
     @State private var editing = false
-    /// True while the title is being held down, to draw the line that fills up.
-    @State private var holding = false
-    /// Set when holding the title opened the editor, so letting go isn't taken as a click.
-    @State private var justEdited = false
 
     private var hasDetails: Bool { item.notes != nil || item.url != nil || !item.tags.isEmpty }
 
@@ -79,6 +75,10 @@ struct TaskRow: View {
                 }
             }
         }
+        Button("Move Up") { model.moveReminder(item, by: -1) }
+            .disabled(model.neighbor(of: item, offset: -1) == nil)
+        Button("Move Down") { model.moveReminder(item, by: 1) }
+            .disabled(model.neighbor(of: item, offset: 1) == nil)
         Button("Details") { expanded.toggle() }
         Divider()
         Button("Delete…", role: .destructive) { confirmingDelete = true }
@@ -122,14 +122,7 @@ struct TaskRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 caption
             }
-            // Hold the title for a second to edit the reminder. A bar fills up while you hold.
-            .overlay(alignment: .bottomLeading) { holdProgress }
-            .onLongPressGesture(minimumDuration: 1, maximumDistance: 6) {
-                holding = false
-                justEdited = true
-                editing = true
-                Task { try? await Task.sleep(for: .seconds(0.6)); justEdited = false }
-            } onPressingChanged: { holding = $0 }
+
             Spacer(minLength: 0)
             if hasDetails || hovering || expanded { infoButton }
             if item.isFlagged {
@@ -140,7 +133,7 @@ struct TaskRow: View {
         }
         .padding(.vertical, 5).padding(.horizontal, 6)
         .contentShape(Rectangle())
-        .onTapGesture { if !justEdited { start() } }
+        .onTapGesture(perform: start)
     }
 
     @ViewBuilder private var caption: some View {
@@ -152,23 +145,6 @@ struct TaskRow: View {
             }
             .font(.caption)
         }
-    }
-
-    /// The bar under the title that fills while it is held down.
-    private var holdProgress: some View {
-        Capsule()
-            .fill(Color.primary.opacity(0.12))
-            .frame(height: 3)
-            .overlay(alignment: .leading) {
-                Capsule()
-                    .fill(LinearGradient(colors: [Color.accentColor.opacity(0.55), Color.accentColor], startPoint: .leading, endPoint: .trailing))
-                    .scaleEffect(x: holding ? 1 : 0.001, anchor: .leading)
-                    .animation(holding ? .linear(duration: 1) : .easeOut(duration: 0.2), value: holding)
-            }
-            .opacity(holding ? 1 : 0)
-            .offset(y: 5)
-            .animation(.easeOut(duration: 0.15), value: holding)
-            .allowsHitTesting(false)
     }
 
     /// Folds the sub-tasks away or brings them back.

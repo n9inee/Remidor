@@ -83,6 +83,17 @@ final class TaskModel {
 
     func sortOrder(for list: ReminderList) -> SortOrder { listSortOrders[list.id] ?? sortOrder }
 
+    /// How many lists have an order of their own that differs from the common one.
+    var listsWithOwnOrder: Int {
+        lists.filter { !$0.isSmart || !SmartList.sortsByTime($0) }.filter { listSortOrders[$0.id].map { $0 != sortOrder } ?? false }.count
+    }
+
+    /// Makes every list follow the common order again, forgetting the orders chosen for single lists.
+    func applySortOrderToAllLists() {
+        guard !listSortOrders.isEmpty else { return }
+        listSortOrders = [:]
+    }
+
     /// nil goes back to the common order.
     func setSortOrder(_ order: SortOrder?, for list: ReminderList) {
         listSortOrders[list.id] = order
@@ -232,7 +243,7 @@ final class TaskModel {
         let visible = items.filter { pendingRemovals[$0.id] == nil }
 
         allTags = Self.knownTags(in: items)
-        sections = makeSections(from: visible)
+        sections = makeSections(from: visible, listSections: sectionLookups.mapValues(\.allSections))
     }
 
     private func updateLists(from calendars: [EKCalendar]) {
@@ -291,7 +302,7 @@ final class TaskModel {
         }
     }
 
-    private func makeSections(from items: [ReminderItem]) -> [ReminderSection] {
+    private func makeSections(from items: [ReminderItem], listSections: [String: [ReminderKit.ListSection]]) -> [ReminderSection] {
         let endOfToday = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86_400)
         let byList = Dictionary(grouping: items, by: \.listID)
 
@@ -303,7 +314,8 @@ final class TaskModel {
             case SmartList.all.id: items
             default: byList[list.id] ?? []
             }
-            guard !matching.isEmpty else { return nil }
+            // Smart lists only show when they have something. Your own lists always do, even when empty.
+            guard !matching.isEmpty || !list.isSmart else { return nil }
             let order = sortOrder(for: list)
             var ordered: [ReminderItem]
             if SmartList.sortsByTime(list) {
@@ -319,7 +331,7 @@ final class TaskModel {
             }
             // Sections only exist inside one list.
             if !list.isSmart { ordered = ordered.groupedBySection() }
-            return ReminderSection(list: list, items: ordered.nestingSubtasks())
+            return ReminderSection(list: list, items: ordered.nestingSubtasks(), sections: list.isSmart ? [] : listSections[list.id] ?? [])
         }
     }
 
@@ -356,6 +368,18 @@ final class TaskModel {
         scheduleRefresh()
     }
 
+    /// Puts a list right before or after another one. The order is the one used everywhere, Settings included.
+    func moveList(_ id: String, nextTo targetID: String, after: Bool) {
+        guard id != targetID, let from = lists.firstIndex(where: { $0.id == id }) else { return }
+        var reordered = lists
+        let moving = reordered.remove(at: from)
+        guard let to = reordered.firstIndex(where: { $0.id == targetID }) else { return }
+        reordered.insert(moving, at: after ? to + 1 : to)
+        lists = reordered
+        listOrder = reordered.map(\.id)
+        scheduleRefresh()
+    }
+
     // MARK: Changing reminders
 
     func addReminder(_ new: NewReminder) async -> Bool {
@@ -385,9 +409,62 @@ final class TaskModel {
         return true
     }
 
+    /// The reminder one step up (-1) or down (+1) among those at the same level and in the same section of
+    /// its own list, as shown. Sub-tasks are left out.
+    func neighbor(of item: ReminderItem, offset: Int) -> ReminderItem? {
+        guard item.parentID == nil,
+              let section = sections.first(where: { $0.list.id == item.listID }) else { return nil }
+        let siblings = section.items.filter { $0.parentID == nil && $0.sectionID == item.sectionID }
+        guard let index = siblings.firstIndex(where: { $0.id == item.id }), siblings.indices.contains(index + offset) else { return nil }
+        return siblings[index + offset]
+    }
+
+    /// Moves a reminder one step up or down in its list, which puts the list in manual order.
+    func moveReminder(_ item: ReminderItem, by offset: Int) {
+        guard let neighbor = neighbor(of: item, offset: offset) else { return }
+        reorder(item, nextTo: neighbor, after: offset > 0)
+    }
+
+    /// Takes a sub-task out of its parent, leaving it at the top level next to that parent. Does nothing for
+    /// a reminder that isn't a sub-task. Returns false if it failed.
+    @discardableResult
+    private func detach(_ item: ReminderItem) -> Bool {
+        guard let parentID = item.parentID else { return true }
+        guard let child = reminder(withID: item.id), let parent = reminder(withID: parentID) else { return false }
+        return ReminderKit.makeTopLevel(child, nextTo: parent, after: true, in: store)
+    }
+
+    /// Takes a sub-task out of its parent. With a reminder to go next to, it is placed there, which also puts
+    /// the list in manual order so the place is kept.
+    func promote(_ item: ReminderItem, nextTo target: ReminderItem?, after: Bool) {
+        guard let parentID = item.parentID else { return }
+        guard let child = reminder(withID: item.id),
+              let anchor = reminder(withID: target?.id ?? parentID) else {
+            report("That reminder no longer exists.")
+            scheduleRefresh()
+            return
+        }
+        guard ReminderKit.makeTopLevel(child, nextTo: anchor, after: target == nil ? true : after, in: store) else {
+            report("Couldn't take “\(item.title)” out of its parent.")
+            scheduleRefresh()
+            return
+        }
+        if target != nil, let list = lists.first(where: { $0.id == item.listID }), sortOrder(for: list) != .manual {
+            setSortOrder(.manual, for: list)   // refreshes by itself
+        } else {
+            scheduleRefresh()
+        }
+    }
+
     /// Moves a reminder to another list.
     func move(_ item: ReminderItem, toListID id: String) {
         guard item.listID != id else { return }
+        // A sub-task can't stay a sub-task in another list.
+        if item.parentID != nil, !detach(item) {
+            report("Couldn't move “\(item.title)”.")
+            scheduleRefresh()
+            return
+        }
         guard let reminder = reminder(withID: item.id), let target = calendar(withID: id) else {
             report("That reminder or list no longer exists.")
             scheduleRefresh()
@@ -458,6 +535,136 @@ final class TaskModel {
         if new.flagged != item.isFlagged, !ReminderKit.setFlagged(new.flagged, for: reminder, in: store) {
             report("Saved “\(new.title)”, but couldn't change its flag.")
         }
+        scheduleRefresh()
+    }
+
+    // MARK: Sections
+
+    /// Adds a section at the end of a real list.
+    func addSection(named name: String, to list: ReminderList) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let calendar = calendar(withID: list.id) else { return }
+        if !ReminderKit.addSection(named: name, to: calendar, in: store) { report("Couldn't add the section “\(name)”.") }
+        scheduleRefresh()
+    }
+
+    func renameSection(_ id: String, in list: ReminderList, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let calendar = calendar(withID: list.id) else { return }
+        if !ReminderKit.renameSection(id, in: calendar, to: name, in: store) { report("Couldn't rename the section.") }
+        scheduleRefresh()
+    }
+
+    /// Removes a section. Its reminders stay in the list, without a section.
+    func deleteSection(_ id: String, in list: ReminderList) {
+        guard let calendar = calendar(withID: list.id) else { return }
+        if !ReminderKit.deleteSection(id, in: calendar, in: store) { report("Couldn't delete the section.") }
+        collapsedSectionIDs.remove(id)
+        scheduleRefresh()
+    }
+
+    /// Puts a section at a new position among its list's sections. Sorting isn't touched, since it only
+    /// applies inside each section.
+    func moveSection(_ id: String, in list: ReminderList, toIndex index: Int) {
+        guard let calendar = calendar(withID: list.id) else { return }
+        var ids = ReminderKit.sections(of: calendar, in: store).map(\.id)
+        guard let current = ids.firstIndex(of: id) else { return }
+        ids.remove(at: current)
+        ids.insert(id, at: min(max(index, 0), ids.count))
+        if !ReminderKit.orderSections(ids, in: calendar, in: store) { report("Couldn't change the order of the sections.") }
+        scheduleRefresh()
+    }
+
+    /// Moves a section up (-1) or down (+1) among its list's sections.
+    func moveSection(_ id: String, in list: ReminderList, by offset: Int) {
+        guard let calendar = calendar(withID: list.id) else { return }
+        var ids = ReminderKit.sections(of: calendar, in: store).map(\.id)
+        guard let index = ids.firstIndex(of: id), ids.indices.contains(index + offset) else { return }
+        ids.swapAt(index, index + offset)
+        if !ReminderKit.orderSections(ids, in: calendar, in: store) { report("Couldn't change the order of the sections.") }
+        scheduleRefresh()
+    }
+
+    /// Puts a reminder into a section of its own list, or into none when `sectionID` is nil.
+    func move(_ item: ReminderItem, toSection sectionID: String?) {
+        // A sub-task follows its parent's section, so it has to leave the parent first.
+        if item.parentID != nil, !detach(item) {
+            report("Couldn't move “\(item.title)” to that section.")
+            scheduleRefresh()
+            return
+        }
+        guard let reminder = reminder(withID: item.id), let calendar = calendar(withID: item.listID) else {
+            report("That reminder or list no longer exists.")
+            scheduleRefresh()
+            return
+        }
+        if !ReminderKit.move(reminder, toSection: sectionID, in: calendar, in: store) {
+            report("Couldn't move “\(item.title)” to that section.")
+        }
+        // Sub-tasks stay with their parent.
+        for child in openItems where child.parentID == item.id {
+            if let stored = self.reminder(withID: child.id) { _ = ReminderKit.move(stored, toSection: sectionID, in: calendar, in: store) }
+        }
+        scheduleRefresh()
+    }
+
+    // MARK: Lists
+
+    /// The colours offered for a new list.
+    static let listColors: [NSColor] = [.systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue, .systemPurple, .systemPink, .systemBrown]
+
+    /// Creates a list in the account new reminders normally go to.
+    @discardableResult
+    func createList(named name: String, color: NSColor) -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return false }
+        guard let source = store.defaultCalendarForNewReminders()?.source ?? store.sources.first(where: { $0.sourceType == .calDAV || $0.sourceType == .local }) else {
+            report("There is no account to create the list in.")
+            return false
+        }
+        let list = EKCalendar(for: .reminder, eventStore: store)
+        list.title = name
+        list.cgColor = color.cgColor
+        list.source = source
+        do { try store.saveCalendar(list, commit: true) } catch {
+            log.error("Failed to create list: \(error.localizedDescription)")
+            store.reset()
+            report("Couldn't create the list “\(name)”.")
+            return false
+        }
+        // A new list is shown right away, even when only some lists were chosen before.
+        if var chosen = selectedListIDs {
+            chosen.insert(list.calendarIdentifier)
+            selectedListIDs = chosen
+        }
+        scheduleRefresh()
+        return true
+    }
+
+    func renameList(_ list: ReminderList, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let calendar = calendar(withID: list.id), calendar.allowsContentModifications else { return }
+        calendar.title = name
+        do { try store.saveCalendar(calendar, commit: true) } catch {
+            log.error("Failed to rename list: \(error.localizedDescription)")
+            store.reset()
+            report("Couldn't rename the list.")
+        }
+        scheduleRefresh()
+    }
+
+    /// Deletes a list with everything in it.
+    func deleteList(_ list: ReminderList) {
+        guard let calendar = calendar(withID: list.id), calendar.allowsContentModifications else {
+            report("That list can't be deleted.")
+            return
+        }
+        do { try store.removeCalendar(calendar, commit: true) } catch {
+            log.error("Failed to delete list: \(error.localizedDescription)")
+            store.reset()
+            report("Couldn't delete the list “\(list.title)”.")
+        }
+        if preferredListID == list.id { preferredListID = nil }
         scheduleRefresh()
     }
 

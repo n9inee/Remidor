@@ -13,6 +13,7 @@ struct MenuView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var minutes = 30
     @State private var updates = UpdateChecker.shared
+    @State private var creatingList = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -25,6 +26,7 @@ struct MenuView: View {
         .frame(width: 320)
         .background(PanelAligner())
         .animation(.snappy(duration: 0.5), value: model.phase)
+        .animation(.snappy(duration: 0.4), value: creatingList)
         .animation(.snappy(duration: 0.5), value: model.undoBannerItem?.id)
         .animation(.snappy(duration: 0.5), value: model.errorMessage)
         .animation(.snappy(duration: 0.5), value: updates.availableUpdate)
@@ -43,6 +45,7 @@ struct MenuView: View {
                     minutes = model.defaultMinutes
                     model.select(item)
                 }
+                if creatingList { NewListForm(model: model) { creatingList = false } }
                 if let completed = model.undoBannerItem {
                     UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -81,6 +84,9 @@ struct MenuView: View {
                     NSApp.activate()
                 }
                 FooterButton(title: "Open Reminders", icon: "checklist", iconOnly: true, action: model.openRemindersApp)
+                if model.hasAccess {
+                    FooterButton(title: "New List", icon: "plus", iconOnly: true) { withAnimation(.snappy(duration: 0.4)) { creatingList.toggle() } }
+                }
             }
             Spacer()
             if !model.recentlyCompleted.isEmpty {

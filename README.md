@@ -15,14 +15,15 @@ A menu bar companion for the macOS **Reminders** app. See what's open at a glanc
 ## What it does
 
 - **Dropdown.** Your open reminders, grouped by list, with Today, Scheduled, Flagged and All. Fold lists, list sections and sub-tasks, resize the window, and reorder lists in Settings.
-- **Sorting.** By due date, priority, title, creation date or **Manual**, which is the order you made in the Reminders app. Set it for all lists or for each list on its own.
+- **Lists and sections.** The + in the footer makes a list, and it shows up right away, empty or not. Point at a list's name for a + that adds a section and a ⋯ menu that renames or deletes the list. Sections come first, then the reminders that are in none. Drag lists and section headings to reorder them, and drop a reminder on a heading to move it there. Sorting stays inside each section, as in Reminders.
+- **Sorting.** By due date, priority, title, creation date or **Manual**, which is the order you made in the Reminders app. Set it for all lists or for each list on its own, and "Use for every list" in Settings drops the individual ones.
 - **Quick add.** Type "call mom tmrw at 8pm !!!" and the date, priority, list and tags are picked out for you (see below).
-- **Edit in place.** Hold a title for one second, or right-click → Edit, and change the reminder with everything the quick-add box understands.
-- **Drag and drop.** Drag a reminder to reorder it (the list switches to manual), onto another reminder to make it a sub-task, onto another list to move it, onto Flagged to flag it, or onto Today to make it due today.
+- **Edit in place.** Right-click a reminder → Edit, and change it with everything the quick-add box understands.
+- **Drag and drop.** Drag a reminder to reorder it (the list switches to manual), onto another reminder to make it a sub-task, onto another list to move it, onto Flagged to flag it, or onto Today to make it due today. Drag a sub-task out the same way to take it out of its parent. Esc cancels a drag, and so does dropping anywhere that doesn't light up.
 - **Focus timer.** Click a task, pick how long, and watch the countdown in the menu bar. Extend it or check the task off when time is up.
-- **Shortcuts.** **⌥Space** opens a floating box from anywhere to add a reminder, find one, or check one off (**⇧↩**). **⇧⌥O** opens the Reminders app. Both can be changed in Settings.
+- **Shortcuts.** **⌥Space** opens a floating box from anywhere to add a reminder, or to find one and check it off (**⇧↩**). Tasks are grouped like the dropdown, and an ⓘ opens a task's details. **⇧⌥O** opens the Reminders app. Both can be changed in Settings.
 - **Undo.** Checked something off by accident? Use the banner, **⌘Z**, or the Recent menu. Checking off a parent checks off its sub-tasks, and undo brings them back.
-- **Right-click menu.** Open, Edit, Date, Priority, Flag, List, Details and Delete.
+- **Right-click menu.** Open, Edit, Date, Priority, Flag, List, Move Up, Move Down, Details and Delete. A list's name has its own: New Section, Rename and Delete.
 
 <p align="center">
   <img src="docs/images/timer.png" alt="Choosing a duration, the running countdown, and the finished screen" width="900">
@@ -85,7 +86,7 @@ Everything stays on your Mac. Remidor reads and changes reminders through Apple'
 
 ## Good to know
 
-- **Sub-tasks, tags, flags, manual order and sections** aren't part of EventKit's public API. Remidor reads them through undocumented fields (see [`ReminderKit.swift`](Remidor/Model/ReminderKit.swift)) and writes flags, order and sub-tasks through the same internal save request EventKit uses. If macOS ever changes them, those features quietly switch off and everything else keeps working. Remidor never changes sections, so reminders can't be dragged between sections.
+- **Sub-tasks, tags, flags, manual order and sections** aren't part of EventKit's public API. Remidor reads them through undocumented fields (see [`ReminderKit.swift`](Remidor/Model/ReminderKit.swift)) and writes flags, order and sub-tasks through the same internal save request EventKit uses. If macOS ever changes them, those features quietly switch off and everything else keeps working. Sections are managed through the same hidden layer, so they can be added, renamed, reordered, deleted and filled by dragging, and deleting one keeps its reminders.
 - **Smart lists** aren't exposed to other apps, so Today, Scheduled and All are rebuilt from due dates. Flagged uses the real flags.
 - **Tags on new reminders** stay plain text in the title, because apps can't create real tags.
 - **Repeating tasks can't be undone** after checking them off, and **deleting is permanent**.

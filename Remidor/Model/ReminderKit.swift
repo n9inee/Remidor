@@ -7,6 +7,9 @@
 
 import EventKit
 import Foundation
+import OSLog
+
+private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Remidor", category: "reminderkit")
 
 /// Sub-tasks, tags and flags aren't part of EventKit's public API. Every `EKReminder` wraps a ReminderKit
 /// object, reachable through the `backingObject` / `REMObject` keys, that knows its parent reminder
@@ -65,7 +68,9 @@ enum ReminderKit {
         guard request.responds(to: save), let implementation = request.method(for: save) else { return false }
         typealias SaveFunction = @convention(c) (AnyObject, Selector, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
         var error: NSError?
-        return unsafeBitCast(implementation, to: SaveFunction.self)(request, save, &error)
+        let saved = unsafeBitCast(implementation, to: SaveFunction.self)(request, save, &error)
+        if !saved { log.error("ReminderKit save failed: \(error?.localizedDescription ?? "unknown")") }
+        return saved
     }
 
     /// A change item for an object, through which it can be edited in the request.
@@ -131,6 +136,9 @@ enum ReminderKit {
         fileprivate let dataView: NSObject
         fileprivate let sections: [String: ListSection]
 
+        /// Every section of the list, in order.
+        var allSections: [ListSection] { sections.values.sorted { $0.index < $1.index } }
+
         fileprivate init(dataView: NSObject, sections: [String: ListSection]) {
             self.dataView = dataView
             self.sections = sections
@@ -156,7 +164,8 @@ enum ReminderKit {
         else { return [:] }
 
         var lookups: [String: SectionLookup] = [:]
-        for calendar in calendars {
+        for known in calendars {
+            let calendar = store.calendar(withIdentifier: known.calendarIdentifier) ?? known   // not an older snapshot
             guard let list = object(calendar, "backingObject").flatMap({ object($0, "REMObject") }),
                   let context = object(list, "sectionContext"),
                   context.responds(to: NSSelectorFromString("hasSections")),
@@ -206,6 +215,120 @@ enum ReminderKit {
               let context = object(parentChange, "subtaskContext"),
               context.responds(to: NSSelectorFromString("addReminderChangeItem:")) else { return false }
         _ = context.perform(NSSelectorFromString("addReminderChangeItem:"), with: childChange)
+        return commit(request)
+    }
+
+    // MARK: Editing sections
+
+    /// The list's sections, in order, with the ReminderKit object of each.
+    nonisolated private static func sectionObjects(of calendar: EKCalendar, in store: EKEventStore) -> [(uuid: String, object: NSObject)] {
+        let calendar = store.calendar(withIdentifier: calendar.calendarIdentifier) ?? calendar   // not an older snapshot
+        guard let reminderStore = object(store, "reminderStore"),
+              let remStore = object(reminderStore, "remStore"),
+              let list = object(calendar, "backingObject").flatMap({ object($0, "REMObject") }),
+              let context = object(list, "sectionContext"),
+              let found = call(remStore, "fetchListSectionsForListSectionContext:error:", with: context) as? [NSObject] else { return [] }
+        return found.compactMap { section in sectionUUID(section).map { ($0, section) } }
+    }
+
+    /// The list's sections, in order.
+    nonisolated static func sections(of calendar: EKCalendar, in store: EKEventStore) -> [ListSection] {
+        sectionObjects(of: calendar, in: store).enumerated().compactMap { index, entry in
+            object(entry.object, "storage").flatMap { $0.value(forKey: "displayName") as? String }
+                .map { ListSection(id: entry.uuid, title: $0, index: index) }
+        }
+    }
+
+    /// A save request with the change item for the list's sections, ready for edits.
+    nonisolated private static func sectionEditing(_ calendar: EKCalendar, in store: EKEventStore) -> (request: NSObject, context: NSObject)? {
+        let calendar = store.calendar(withIdentifier: calendar.calendarIdentifier) ?? calendar
+        guard let list = object(calendar, "backingObject").flatMap({ object($0, "REMObject") }),
+              let request = saveRequest(in: store),
+              let listChange = changeItem("updateList:", for: list, in: request),
+              let context = object(listChange, "sectionsContextChangeItem") else { return nil }
+        return (request, context)
+    }
+
+    /// Adds a section at the end of a list.
+    nonisolated static func addSection(named name: String, to calendar: EKCalendar, in store: EKEventStore) -> Bool {
+        guard let editing = sectionEditing(calendar, in: store) else { return false }
+        let selector = NSSelectorFromString("addListSectionWithDisplayName:toListSectionContextChangeItem:")
+        guard editing.request.responds(to: selector) else { return false }
+        _ = editing.request.perform(selector, with: name as NSString, with: editing.context)
+        return commit(editing.request)
+    }
+
+    /// Renames a section.
+    nonisolated static func renameSection(_ uuid: String, in calendar: EKCalendar, to name: String, in store: EKEventStore) -> Bool {
+        guard let section = sectionObjects(of: calendar, in: store).first(where: { $0.uuid == uuid })?.object,
+              let request = saveRequest(in: store),
+              let change = changeItem("updateListSection:", for: section, in: request),
+              let storage = object(change, "storage"),
+              storage.responds(to: NSSelectorFromString("setDisplayName:")) else { return false }
+        storage.setValue(name, forKey: "displayName")
+        return commit(request)
+    }
+
+    /// Removes a section. The reminders in it stay in the list.
+    nonisolated static func deleteSection(_ uuid: String, in calendar: EKCalendar, in store: EKEventStore) -> Bool {
+        guard let section = sectionObjects(of: calendar, in: store).first(where: { $0.uuid == uuid })?.object,
+              let request = saveRequest(in: store),
+              let change = changeItem("updateListSection:", for: section, in: request),
+              change.responds(to: NSSelectorFromString("removeFromList")) else { return false }
+        _ = change.perform(NSSelectorFromString("removeFromList"))
+        return commit(request)
+    }
+
+    /// Puts a reminder into a section of its list, or takes it out of all sections when `uuid` is nil.
+    nonisolated static func move(_ reminder: EKReminder, toSection uuid: String?, in calendar: EKCalendar, in store: EKEventStore) -> Bool {
+        guard let editing = sectionEditing(calendar, in: store),
+              let membershipClass = NSClassFromString("REMMembership") as? NSObject.Type,
+              let setClass = NSClassFromString("REMMemberships") as? NSObject.Type,
+              let membershipAlloc = membershipClass.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject,
+              let setAlloc = setClass.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject else { return false }
+
+        let initMembership = NSSelectorFromString("initWithMemberIdentifier:groupIdentifier:isObsolete:modifiedOn:")
+        guard membershipAlloc.responds(to: initMembership), let implementation = membershipAlloc.method(for: initMembership) else { return false }
+        typealias Init = @convention(c) (AnyObject, Selector, AnyObject, AnyObject?, Bool, AnyObject) -> AnyObject?
+        guard let member = NSUUID(uuidString: reminder.calendarItemIdentifier) else { return false }
+        let group = uuid.flatMap { NSUUID(uuidString: $0) }
+        guard let membership = unsafeBitCast(implementation, to: Init.self)(membershipAlloc, initMembership, member,
+                                                                          group, uuid == nil, Date() as NSDate) as? NSObject,
+              setAlloc.responds(to: NSSelectorFromString("initWithMembershipByMemberIdentifier:")),
+              let memberships = setAlloc.perform(NSSelectorFromString("initWithMembershipByMemberIdentifier:"),
+                                                 with: [member: membership] as NSDictionary)?.takeUnretainedValue() as? NSObject,
+              editing.context.responds(to: NSSelectorFromString("setUnsavedMembershipsOfRemindersInSections:")) else { return false }
+        _ = editing.context.perform(NSSelectorFromString("setUnsavedMembershipsOfRemindersInSections:"), with: memberships)
+        return commit(editing.request)
+    }
+
+    /// Sets the order of a list's sections, by the ids of all of them.
+    nonisolated static func orderSections(_ uuids: [String], in calendar: EKCalendar, in store: EKEventStore) -> Bool {
+        let objects = sectionObjects(of: calendar, in: store)
+        let ordered = uuids.compactMap { id in objects.first { $0.uuid == id }.flatMap { object($0.object, "remObjectID") } }
+        guard ordered.count == uuids.count, let editing = sectionEditing(calendar, in: store),
+              editing.context.responds(to: NSSelectorFromString("setUnsavedSectionIDsOrdering:")),
+              editing.context.responds(to: NSSelectorFromString("setShouldUpdateSectionsOrdering:")) else { return false }
+        _ = editing.context.perform(NSSelectorFromString("setUnsavedSectionIDsOrdering:"), with: ordered as NSArray)
+        editing.context.setValue(true, forKey: "shouldUpdateSectionsOrdering")
+        return commit(editing.request)
+    }
+
+    /// Takes a sub-task out of its parent and puts it, as an ordinary reminder, next to another one of the list.
+    /// (ReminderKit's own `removeFromParentReminder` deletes the reminder, so it isn't used.)
+    nonisolated static func makeTopLevel(_ reminder: EKReminder, nextTo anchor: EKReminder, after: Bool, in store: EKEventStore) -> Bool {
+        guard let rem = reminderObject(of: reminder),
+              let anchorRem = reminderObject(of: anchor),
+              let list = object(rem, "list"),
+              let request = saveRequest(in: store),
+              let listChange = changeItem("updateList:", for: list, in: request),
+              let moving = changeItem("updateReminder:", for: rem, in: request),
+              let target = changeItem("updateReminder:", for: anchorRem, in: request) else { return false }
+
+        let insert = NSSelectorFromString("insertReminderChangeItem:adjacentToReminderChangeItem:isAfter:withParentReminderChangeItem:")
+        guard listChange.responds(to: insert), let implementation = listChange.method(for: insert) else { return false }
+        typealias Insert = @convention(c) (AnyObject, Selector, AnyObject, AnyObject, Bool, AnyObject?) -> Void
+        unsafeBitCast(implementation, to: Insert.self)(listChange, insert, moving, target, after, nil)
         return commit(request)
     }
 

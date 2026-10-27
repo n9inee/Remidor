@@ -52,6 +52,8 @@ struct ReminderList: Identifiable {
 struct ReminderSection: Identifiable {
     let list: ReminderList
     let items: [ReminderItem]
+    /// The list's own sections, empty ones included, in order. Only regular lists have them.
+    var sections: [ReminderKit.ListSection] = []
     var id: String { list.id }
 }
 

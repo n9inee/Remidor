@@ -174,7 +174,7 @@ struct OrderingTests {
 
     @Test func sectionsGroupItemsAndKeepTheirOrder() {
         let items = [placed("a", section: 1), placed("b"), placed("c", section: 0), placed("d", section: 1), placed("e")]
-        #expect(items.groupedBySection().map(\.id) == ["b", "e", "c", "a", "d"])
+        #expect(items.groupedBySection().map(\.id) == ["c", "a", "d", "b", "e"])
     }
 
     @Test func subtasksJoinTheirParentsSection() {
@@ -188,6 +188,25 @@ struct OrderingTests {
         let nested = [placed("p"), placed("k", parent: "p"), placed("q"), placed("m", parent: "q")].nestingSubtasks()
         #expect(nested.hidingFoldedSubtasks(["p"]).map(\.id) == ["p", "q", "m"])
         #expect(nested.hidingFoldedSubtasks([]).count == 4)
+    }
+
+    @Test func entriesShowEmptySectionsAndFoldedOnesAsHeadings() {
+        let food = ReminderKit.ListSection(id: "f", title: "Food", index: 0)
+        let empty = ReminderKit.ListSection(id: "e", title: "Empty", index: 1)
+        let home = ReminderKit.ListSection(id: "h", title: "Home", index: 2)
+        let list = ReminderList(id: "l", title: "L", color: .blue)
+        let items = [placed("loose"), placed("a", section: 0), placed("b", section: 0), placed("c", section: 2)]
+        var withIDs = items
+        withIDs[1].sectionID = "f"; withIDs[2].sectionID = "f"; withIDs[3].sectionID = "h"
+        let section = ReminderSection(list: list, items: withIDs, sections: [food, empty, home])
+
+        let all = section.entries(foldedParents: [], foldedSections: [])
+        #expect(all.map(\.id) == ["section:f", "a", "b", "section:e", "section:h", "c", "section:none", "loose"])
+        let folded = section.entries(foldedParents: [], foldedSections: ["f"])
+        #expect(folded.map(\.id) == ["section:f", "section:e", "section:h", "c", "section:none", "loose"])
+        // Smart lists never show sections.
+        let smart = ReminderSection(list: SmartList.today, items: withIDs, sections: [food])
+        #expect(smart.entries(foldedParents: [], foldedSections: []).count == 4)
     }
 
     @Test func priorityOrderPutsUnprioritisedLast() {
@@ -370,5 +389,192 @@ struct RecurrenceParsingTests {
         #expect(Recurrence(frequency: .weekly, weekdays: [1]).label == "Every Sun")
         #expect(Recurrence.weekdaysOnly.label == "Weekdays")
         #expect(Recurrence(frequency: .weekly, interval: 2).label == "Every 2 weeks")
+    }
+}
+
+@MainActor
+struct DropResolverTests {
+    private let list = ReminderList(id: "work", title: "Work", color: .blue)
+    private let other = ReminderList(id: "home", title: "Home", color: .green)
+
+    private func item(_ id: String, in list: ReminderList, section: String? = nil, parent: String? = nil, flagged: Bool = false) -> ReminderItem {
+        var item = ReminderItem(id: id, title: id, listID: list.id, listTitle: list.title, listColor: list.color, parentID: parent)
+        item.isFlagged = flagged
+        item.depth = parent == nil ? 0 : 1
+        item.sectionID = section
+        item.sectionTitle = section
+        return item
+    }
+
+    /// Lays a list out top to bottom the way the dropdown does, starting at `y`, and records where everything is.
+    private func layout(_ section: ReminderSection, frames: RowFrames, from y: CGFloat) -> CGFloat {
+        var y = y
+        frames.headers[section.id] = CGRect(x: 0, y: y, width: 296, height: 30); y += 32
+        for entry in section.entries(foldedParents: [], foldedSections: []) {
+            switch entry {
+            case .heading(let info, _, _):
+                frames.headings[section.id + "|" + info.id] = CGRect(x: 0, y: y, width: 296, height: 28); y += 30
+            case .noSection:
+                frames.headings[section.id + "|none"] = CGRect(x: 0, y: y, width: 296, height: 28); y += 30
+            case .item(let item):
+                frames.rows[section.id + "|" + item.id] = CGRect(x: 0, y: y, width: 296, height: 36); y += 38
+            }
+        }
+        return y + 14
+    }
+
+    private func resolver(_ sections: [ReminderSection]) -> DropResolver {
+        let frames = RowFrames()
+        var y: CGFloat = 0
+        for section in sections { y = layout(section, frames: frames, from: y) }
+        return DropResolver(sections: sections, collapsedLists: [], collapsedParents: [], collapsedSections: [], frames: frames,
+                            hasSubtasks: { moving in sections.flatMap(\.items).contains { $0.parentID == moving.id } })
+    }
+
+    @Test func reorderingWorksDownAsWellAsUp() throws {
+        let a = item("a", in: list), b = item("b", in: list), c = item("c", in: list)
+        let resolver = resolver([ReminderSection(list: list, items: [a, b, c])])
+        let rowC = try #require(resolver.frames.rows["work|c"])
+        let rowA = try #require(resolver.frames.rows["work|a"])
+
+        // Down: the lower half of the last row goes after it, the top edge before it.
+        let down = try #require(resolver.target(moving: a, at: CGPoint(x: 100, y: rowC.maxY - 3)))
+        guard case .reorder(let target, let after) = down.action else { Issue.record("expected a reorder"); return }
+        #expect(target.id == "c" && after)
+        let before = try #require(resolver.target(moving: a, at: CGPoint(x: 100, y: rowC.minY + 2)))
+        guard case .reorder(_, let afterTop) = before.action else { Issue.record("expected a reorder"); return }
+        #expect(!afterTop)
+
+        // Up, the same way.
+        let up = try #require(resolver.target(moving: c, at: CGPoint(x: 100, y: rowA.minY + 2)))
+        guard case .reorder(let upTarget, let upAfter) = up.action else { Issue.record("expected a reorder"); return }
+        #expect(upTarget.id == "a" && !upAfter)
+        // Over itself nothing happens.
+        #expect(resolver.target(moving: a, at: CGPoint(x: 100, y: rowA.midY)) == nil)
+    }
+
+    @Test func middleOfARowMakesASubtask() throws {
+        let a = item("a", in: list), b = item("b", in: list)
+        let resolver = resolver([ReminderSection(list: list, items: [a, b])])
+        let rowB = try #require(resolver.frames.rows["work|b"])
+        let result = try #require(resolver.target(moving: a, at: CGPoint(x: 100, y: rowB.midY)))
+        guard case .subtask(let parent) = result.action else { Issue.record("expected a sub-task"); return }
+        #expect(parent.id == "b")
+    }
+
+    @Test func sectionsBelowTheReminderTakeIt() throws {
+        let a1 = item("a1", in: list, section: "A"), a2 = item("a2", in: list, section: "A"), b1 = item("b1", in: list, section: "B")
+        let sections = [ReminderKit.ListSection(id: "A", title: "A", index: 0), ReminderKit.ListSection(id: "B", title: "B", index: 1)]
+        let resolver = resolver([ReminderSection(list: list, items: [a1, a2, b1], sections: sections)])
+        let heading = try #require(resolver.frames.headings["work|B"])
+        let onHeading = try #require(resolver.target(moving: a1, at: CGPoint(x: 100, y: heading.midY)))
+        guard case .section(let id, _) = onHeading.action else { Issue.record("expected a section move"); return }
+        #expect(id == "B")
+
+        let rowB1 = try #require(resolver.frames.rows["work|b1"])
+        let onRow = try #require(resolver.target(moving: a1, at: CGPoint(x: 100, y: rowB1.midY)))
+        guard case .section(let rowID, _) = onRow.action else { Issue.record("expected a section move"); return }
+        #expect(rowID == "B")
+        #expect(onRow.rect == heading)   // the heading lights up, not the reminder
+
+        // And up again, from B into A.
+        let headingA = try #require(resolver.frames.headings["work|A"])
+        let back = try #require(resolver.target(moving: b1, at: CGPoint(x: 100, y: headingA.midY)))
+        guard case .section(let backID, _) = back.action else { Issue.record("expected a section move"); return }
+        #expect(backID == "A")
+    }
+
+    @Test func theNoSectionTitleTakesAReminderOutOfItsSection() throws {
+        let a = item("a", in: list, section: "A"), loose = item("l", in: list)
+        let sections = [ReminderKit.ListSection(id: "A", title: "A", index: 0)]
+        let resolver = resolver([ReminderSection(list: list, items: [a, loose], sections: sections)])
+        let title = try #require(resolver.frames.headings["work|none"])
+        let result = try #require(resolver.target(moving: a, at: CGPoint(x: 100, y: title.midY)))
+        guard case .section(let id, _) = result.action else { Issue.record("expected a section move"); return }
+        #expect(id == nil)
+        // A reminder that is in no section already has nothing to do there.
+        #expect(resolver.target(moving: loose, at: CGPoint(x: 100, y: title.midY)) == nil)
+    }
+
+    @Test func aReminderCanLeaveItsSectionOnTheListName() throws {
+        let a1 = item("a1", in: list, section: "A")
+        let sections = [ReminderKit.ListSection(id: "A", title: "A", index: 0)]
+        let resolver = resolver([ReminderSection(list: list, items: [a1], sections: sections)])
+        let header = try #require(resolver.frames.headers["work"])
+        let result = try #require(resolver.target(moving: a1, at: CGPoint(x: 100, y: header.midY)))
+        guard case .section(let id, _) = result.action else { Issue.record("expected a section move"); return }
+        #expect(id == nil)
+    }
+
+    @Test func anotherListBelowTakesTheReminder() throws {
+        let a = item("a", in: list), h = item("h", in: other)
+        let resolver = resolver([ReminderSection(list: list, items: [a]), ReminderSection(list: other, items: [h])])
+        let header = try #require(resolver.frames.headers["home"])
+        let onHeader = try #require(resolver.target(moving: a, at: CGPoint(x: 100, y: header.midY)))
+        guard case .move(let moved) = onHeader.action else { Issue.record("expected a move"); return }
+        #expect(moved.id == "home")
+        // On one of its reminders, the list's name lights up.
+        let row = try #require(resolver.frames.rows["home|h"])
+        let onRow = try #require(resolver.target(moving: a, at: CGPoint(x: 100, y: row.midY)))
+        #expect(onRow.rect == header)
+    }
+
+    @Test func subtasksCanBeTakenOutOrMovedToAnotherParent() throws {
+        let parent = item("p", in: list), child = item("k", in: list, parent: "p"), sibling = item("s", in: list)
+        let resolver = resolver([ReminderSection(list: list, items: [parent, child, sibling])])
+        let rowS = try #require(resolver.frames.rows["work|s"])
+        let rowP = try #require(resolver.frames.rows["work|p"])
+        let header = try #require(resolver.frames.headers["work"])
+
+        let edge = try #require(resolver.target(moving: child, at: CGPoint(x: 100, y: rowS.maxY - 3)))
+        guard case .promote(let anchor, let after) = edge.action else { Issue.record("expected a promotion"); return }
+        #expect(anchor?.id == "s" && after)
+        let middle = try #require(resolver.target(moving: child, at: CGPoint(x: 100, y: rowS.midY)))
+        guard case .subtask(let newParent) = middle.action else { Issue.record("expected a new parent"); return }
+        #expect(newParent.id == "s")
+        // Over its own parent's middle nothing happens; the edges take it out next to the parent.
+        #expect(resolver.target(moving: child, at: CGPoint(x: 100, y: rowP.midY)) == nil)
+        let aside = try #require(resolver.target(moving: child, at: CGPoint(x: 100, y: rowP.minY + 2)))
+        guard case .promote(let beside, _) = aside.action else { Issue.record("expected a promotion"); return }
+        #expect(beside?.id == "p")
+        // The list's name takes it out of the parent in place.
+        let onName = try #require(resolver.target(moving: child, at: CGPoint(x: 100, y: header.midY)))
+        guard case .promote(let none, _) = onName.action else { Issue.record("expected a promotion"); return }
+        #expect(none == nil)
+    }
+
+    @Test func smartListsTakeFlagsAndDatesOnly() throws {
+        let a = item("a", in: list)
+        var flagged = a; flagged.isFlagged = true
+        let resolver = resolver([ReminderSection(list: SmartList.today, items: [a]), ReminderSection(list: SmartList.flagged, items: [flagged]),
+                                 ReminderSection(list: SmartList.scheduled, items: [a])])
+        let today = try #require(resolver.frames.headers[SmartList.today.id])
+        let flagHeader = try #require(resolver.frames.headers[SmartList.flagged.id])
+        let scheduled = try #require(resolver.frames.headers[SmartList.scheduled.id])
+        guard case .today? = resolver.target(moving: a, at: CGPoint(x: 100, y: today.midY))?.action else { Issue.record("expected Today"); return }
+        guard case .flag? = resolver.target(moving: a, at: CGPoint(x: 100, y: flagHeader.midY))?.action else { Issue.record("expected a flag"); return }
+        #expect(resolver.target(moving: flagged, at: CGPoint(x: 100, y: flagHeader.midY)) == nil)
+        #expect(resolver.target(moving: a, at: CGPoint(x: 100, y: scheduled.midY)) == nil)
+    }
+
+    @Test func sectionsAndListsFindTheirSlot() throws {
+        let sections = [ReminderKit.ListSection(id: "A", title: "A", index: 0), ReminderKit.ListSection(id: "B", title: "B", index: 1),
+                        ReminderKit.ListSection(id: "C", title: "C", index: 2)]
+        let items = [item("a", in: list, section: "A"), item("b", in: list, section: "B"), item("c", in: list, section: "C")]
+        let resolver = resolver([ReminderSection(list: list, items: items, sections: sections), ReminderSection(list: other, items: [item("h", in: other)])])
+        let headingC = try #require(resolver.frames.headings["work|C"])
+        // A carried down past C lands last.
+        let last = try #require(resolver.sectionSlot(moving: sections[0], in: "work", at: CGPoint(x: 100, y: headingC.maxY + 40)))
+        #expect(last.index == 2)
+        let headingB = try #require(resolver.frames.headings["work|B"])
+        let first = try #require(resolver.sectionSlot(moving: sections[2], in: "work", at: CGPoint(x: 100, y: headingB.minY - 4)))
+        #expect(first.index == 1)
+
+        let homeHeader = try #require(resolver.frames.headers["home"])
+        let after = try #require(resolver.listSlot(moving: "work", at: CGPoint(x: 100, y: homeHeader.maxY + 60)))
+        #expect(after.target == "home" && after.after)
+        let workHeader = try #require(resolver.frames.headers["work"])
+        let before = try #require(resolver.listSlot(moving: "home", at: CGPoint(x: 100, y: workHeader.minY - 2)))
+        #expect(before.target == "work" && !before.after)
     }
 }

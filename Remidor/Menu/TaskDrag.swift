@@ -15,8 +15,32 @@ struct TaskDrag {
     /// Where the mouse was when it was picked up, and where it is now, measured in the scrolled content.
     var start: CGPoint
     var location: CGPoint
+    /// Where the row was drawn when it was picked up, so the carried copy doesn't depend on the list staying put.
+    var rect: CGRect
 
     /// How far the row has been carried. It includes any scrolling done on the way.
+    var translation: CGSize { CGSize(width: location.x - start.x, height: location.y - start.y) }
+}
+
+/// A section heading being carried to a new place among its list's sections.
+struct SectionDrag {
+    var section: ReminderKit.ListSection
+    /// The list the section belongs to (the id of its dropdown section).
+    var listID: String
+    var start: CGPoint
+    var location: CGPoint
+    var rect: CGRect
+
+    var translation: CGSize { CGSize(width: location.x - start.x, height: location.y - start.y) }
+}
+
+/// A list's name being carried to a new place among the lists.
+struct ListDrag {
+    var listID: String
+    var start: CGPoint
+    var location: CGPoint
+    var rect: CGRect
+
     var translation: CGSize { CGSize(width: location.x - start.x, height: location.y - start.y) }
 }
 
@@ -32,6 +56,10 @@ enum DropAction {
     case today
     /// Dropped on the middle of another reminder: becomes its sub-task.
     case subtask(of: ReminderItem)
+    /// A sub-task taken out of its parent, placed next to a reminder of the list (or just left in place).
+    case promote(nextTo: ReminderItem?, after: Bool)
+    /// Dropped on a section's heading, or on a reminder of another section: moves into that section.
+    case section(id: String?, title: String?)
 
     var label: String {
         switch self {
@@ -40,6 +68,8 @@ enum DropAction {
         case .flag: "Flag it"
         case .today: "Due today"
         case .subtask: "Make sub-task"
+        case .promote: "Take out of parent"
+        case .section(_, let title): title.map { "Move to \($0)" } ?? "No section"
         }
     }
 }
@@ -48,6 +78,7 @@ enum DropAction {
 /// reference, because these positions change all the time and nothing needs redrawing for it.
 final class RowFrames {
     var headers: [String: CGRect] = [:]
+    var headings: [String: CGRect] = [:]
     var rows: [String: CGRect] = [:]
 }
 

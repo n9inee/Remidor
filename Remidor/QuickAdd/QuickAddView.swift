@@ -128,24 +128,27 @@ struct QuickAddView: View {
     /// "Add …" for the typed title, followed by the open tasks that match it (dates and other tokens are ignored).
     private func quickRows(suggestions: [QuickAddDraft.Suggestion]) -> [QuickRow] {
         guard onPickTask != nil, suggestions.isEmpty else { return [] }
-        var seen = Set<String>()
-        let all = model.sections.flatMap(\.items).filter { seen.insert($0.id).inserted }
+        // Grouped like the dropdown: Today and the other smart lists, then each list with its sections.
         let query = draft.title.lowercased()
-        let matching = query.isEmpty ? all : all.filter { $0.title.lowercased().contains(query) }
-        return (draft.title.isEmpty ? [] : [.add(draft.title)]) + matching.map(QuickRow.task)
+        let tasks = model.sections.flatMap { section in
+            section.items
+                .filter { query.isEmpty || $0.title.lowercased().contains(query) }
+                .map { QuickRow.task($0, in: section.list) }
+        }
+        return (draft.title.isEmpty ? [] : [.add(draft.title)]) + tasks
     }
 
     private func activate(_ row: QuickRow) {
         switch row {
         case .add: addCurrent()
-        case .task(let item): onPickTask?(item)
+        case .task(let item, _): onPickTask?(item)
         }
     }
 
     /// Shift + Return checks off the highlighted task.
     private func completeHighlighted() {
         let rows = quickRows(suggestions: draft.suggestions)
-        guard rows.indices.contains(selection), case .task(let item) = rows[selection] else { return }
+        guard rows.indices.contains(selection), case .task(let item, _) = rows[selection] else { return }
         model.completeOnly(item)
     }
 

@@ -29,9 +29,10 @@ extension Array where Element == ReminderItem {
     }
 
     /// Groups the items by the section they sit in, keeping the order inside each section. Items that
-    /// aren't in a section come first, as in the Reminders app.
+    /// aren't in a section come last.
     func groupedBySection() -> [ReminderItem] {
-        enumerated().sorted { ($0.element.sectionIndex, $0.offset) < ($1.element.sectionIndex, $1.offset) }.map(\.element)
+        func rank(_ item: ReminderItem) -> Int { item.sectionIndex < 0 ? .max : item.sectionIndex }
+        return enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }.map(\.element)
     }
 
     /// Without the sub-tasks of the parents that are folded shut.
@@ -87,5 +88,45 @@ extension Array where Element == ReminderItem {
         case (nil, _?): false
         default: fallback()
         }
+    }
+}
+
+/// One row of a list as shown in the dropdown: a section's heading or a reminder.
+enum ListEntry: Identifiable {
+    case heading(ReminderKit.ListSection, count: Int, folded: Bool)
+    /// The title over the reminders that are in no section, which come after all the sections.
+    case noSection
+    case item(ReminderItem)
+
+    var id: String {
+        switch self {
+        case .heading(let section, _, _): "section:" + section.id
+        case .noSection: "section:none"
+        case .item(let item): item.id
+        }
+    }
+}
+
+extension ReminderSection {
+    /// The rows in the order shown: each section's heading with its reminders under it, then the reminders
+    /// that are in no section under a heading of their own. Folded sections show only their heading. Lists
+    /// without sections are plain reminders.
+    func entries(foldedParents: Set<String>, foldedSections: Set<String>) -> [ListEntry] {
+        let visible = items.hidingFoldedSubtasks(foldedParents)
+        guard !list.isSmart, !sections.isEmpty else { return visible.map(ListEntry.item) }
+        let known = Set(sections.map(\.id))
+        var result: [ListEntry] = []
+        for section in sections {
+            let inside = visible.filter { $0.sectionID == section.id }
+            let folded = foldedSections.contains(section.id)
+            result.append(.heading(section, count: inside.count, folded: folded))
+            if !folded { result += inside.map(ListEntry.item) }
+        }
+        let loose = visible.filter { !($0.sectionID.map(known.contains) ?? false) }
+        if !loose.isEmpty {
+            result.append(.noSection)
+            result += loose.map(ListEntry.item)
+        }
+        return result
     }
 }
