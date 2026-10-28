@@ -15,6 +15,7 @@ A menu bar companion for the macOS **Reminders** app. See what's open at a glanc
 ## What it does
 
 - **Dropdown.** Your open reminders, grouped by list, with Today, Scheduled, Flagged and All. Fold lists, list sections and sub-tasks, resize the window, and reorder lists in Settings.
+- **Next Up and overdue.** Turn on Next Up in Settings for everything late plus the next five due, under a title for each day. A list's ⋯ menu or right-click moves its late reminders to today or tomorrow in one go.
 - **Lists and sections.** The + in the footer makes a list, and it shows up right away, empty or not. Point at a list's name for a + that adds a reminder and a ⋯ menu that adds a section or renames or deletes the list. On Today, Flagged and All the + adds to your default list, already dated today or flagged. Sections come first, then the reminders that are in none. Drag lists and section headings to reorder them, and drop a reminder on a heading to move it there. Sorting stays inside each section, as in Reminders.
 - **Sorting.** By due date, priority, title, creation date or **Manual**, which is the order you made in the Reminders app. Set it for all lists or for each list on its own (right-click a list's name → Sort By), and "Use for every list" in Settings drops the individual ones. Sub-tasks follow their list's order. Reordering one by hand puts that parent's sub-tasks in manual order, and right-click → Sort Sub-tasks changes it again.
 - **Quick add.** Type "call mom tmrw at 8pm !!!" and the date, priority, list and tags are picked out for you (see below).
@@ -35,8 +36,8 @@ Type naturally and Remidor highlights what it understood as you go:
 
 | Type | Examples | Result |
 | --- | --- | --- |
-| Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `in 20 min`, `in 3 days` | Due date, with an alert when a time is given |
-| Repeat | `every sunday`, `ev day`, `every 2 weeks`, `every mon and thu`, `every weekday` | Repeats, starting on the next matching day |
+| Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `in 20 min`, `in two weeks`, `in a month`, `end of month` | Due date, with an alert when a time is given |
+| Repeat | `every sunday`, `ev day`, `every 2 weeks`, `every mon and thu`, `every other tue`, `every weekday` | Repeats, starting on the next matching day |
 | Priority | `!` `!!` `!!!` | Low, medium, high |
 | Flag | `*` | Flags the reminder |
 | List | `~Work`, `~"My List"` | Adds to that list |

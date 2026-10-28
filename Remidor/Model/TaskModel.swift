@@ -320,6 +320,12 @@ final class TaskModel {
         }
     }
 
+    /// Everything that is late, then the next few reminders that aren't.
+    private func nextUpItems(from items: [ReminderItem]) -> [ReminderItem] {
+        let dated = items.filter { $0.due != nil }.sortedByDueTime()
+        return dated.filter(isOverdue) + dated.filter { !isOverdue($0) }.prefix(SmartList.nextUpCount)
+    }
+
     private func makeSections(from items: [ReminderItem], listSections: [String: [ReminderKit.ListSection]]) -> [ReminderSection] {
         let endOfToday = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86_400)
         let byList = Dictionary(grouping: items, by: \.listID)
@@ -327,6 +333,7 @@ final class TaskModel {
         return lists.filter(isSelected).compactMap { list in
             let matching: [ReminderItem] = switch list.id {
             case SmartList.today.id: items.filter { ($0.due ?? .distantFuture) < endOfToday }
+            case SmartList.nextUp.id: nextUpItems(from: items)
             case SmartList.scheduled.id: items.filter { $0.due != nil }
             case SmartList.flagged.id: items.filter(\.isFlagged)
             case SmartList.all.id: items
@@ -752,6 +759,22 @@ final class TaskModel {
     func setDay(_ item: ReminderItem, to day: Date) {
         let moved = ReminderEditing.moving(item.due, hasTime: item.dueHasTime, toDay: day)
         setDue(item, to: moved.date, hasTime: moved.hasTime)
+    }
+
+    /// Moves every late reminder among `items` to another day. One that has a time keeps it, unless that
+    /// time has already gone by on the new day, in which case it only keeps the day.
+    func rescheduleOverdue(in items: [ReminderItem], toDay day: Date) {
+        let late = items.filter(isOverdue)
+        guard !late.isEmpty else { return }
+        var failed = 0
+        for item in late {
+            guard let reminder = reminder(withID: item.id) else { failed += 1; continue }
+            let moved = ReminderEditing.rescheduling(item.due, hasTime: item.dueHasTime, toDay: day)
+            ReminderEditing.setDue(moved.date, hasTime: moved.hasTime, on: reminder)
+            if !save(reminder, action: "reschedule") { failed += 1 }
+        }
+        if failed > 0 { report("Couldn't reschedule \(failed) of \(late.count) reminders.") }
+        scheduleRefresh()
     }
 
     /// Sets a reminder's priority: 0 none, 1 high, 5 medium, 9 low.

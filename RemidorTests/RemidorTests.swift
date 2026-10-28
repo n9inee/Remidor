@@ -75,6 +75,41 @@ struct QuickAddParserTests {
         #expect((19...21).contains(minutes))
     }
 
+    @Test func longerRelativeDates() throws {
+        let calendar = Calendar.current
+        func days(_ text: String) -> Int? {
+            let result = QuickAddParser.parse(text, listNames: lists)
+            return result.due.flatMap {
+                calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: $0)).day
+            }
+        }
+        #expect(days("pay in two weeks") == 14)
+        #expect(days("pay in 3 days") == 3)
+        #expect(days("pay in a week") == 7)
+        #expect(QuickAddParser.parse("pay in two weeks", listNames: lists).title == "pay")
+        let month = try #require(QuickAddParser.parse("renew in a month", listNames: lists).due)
+        #expect(calendar.dateComponents([.month], from: Date(), to: month).month ?? 0 >= 0)
+        #expect(!QuickAddParser.parse("renew in a month", listNames: lists).hasTime)
+        let half = QuickAddParser.parse("tea in half an hour", listNames: lists)
+        #expect(half.title == "tea")
+        #expect(half.hasTime)
+        #expect((29...31).contains(half.due.map { $0.timeIntervalSinceNow / 60 } ?? 0))
+        #expect(QuickAddParser.parse("in a bit", listNames: lists).due == nil)
+    }
+
+    @Test func endOfMonthAndYear() throws {
+        let calendar = Calendar.current
+        let month = QuickAddParser.parse("rent end of the month", listNames: lists)
+        #expect(month.title == "rent")
+        let due = try #require(month.due)
+        #expect(calendar.component(.month, from: due) == calendar.component(.month, from: Date()))
+        #expect(calendar.component(.month, from: due.addingTimeInterval(86_400)) != calendar.component(.month, from: Date()))
+        #expect(!month.hasTime)
+        let year = try #require(QuickAddParser.parse("taxes eoy", listNames: lists).due)
+        #expect(calendar.component(.month, from: year) == 12 && calendar.component(.day, from: year) == 31)
+        #expect(QuickAddParser.parse("the end of days", listNames: lists).due == nil)
+    }
+
     @Test func everythingTogether() {
         let result = QuickAddParser.parse("call mom tmrw at 8pm !!! * ~Inbox #phone", listNames: lists)
         #expect(result.title == "call mom #phone")
@@ -261,12 +296,13 @@ struct SmartListTests {
     }
 
     @Test func smartListsComeInTheUsualOrder() {
-        #expect(SmartList.allLists.map(\.title) == ["Today", "Scheduled", "Flagged", "All"])
+        #expect(SmartList.allLists.map(\.title) == ["Today", "Next Up", "Scheduled", "Flagged", "All"])
     }
 
     @Test func flaggedAndAllSortByTheUsersChoiceNotByTime() {
         #expect(SmartList.sortsByTime(SmartList.today))
         #expect(SmartList.sortsByTime(SmartList.scheduled))
+        #expect(SmartList.sortsByTime(SmartList.nextUp))
         #expect(!SmartList.sortsByTime(SmartList.flagged))
         #expect(!SmartList.sortsByTime(SmartList.all))
     }
@@ -378,6 +414,8 @@ struct RecurrenceParsingTests {
     @Test func intervalsAndSeveralDays() {
         #expect(parse("every 2 weeks").recurrence == Recurrence(frequency: .weekly, interval: 2))
         #expect(parse("every other day").recurrence == Recurrence(frequency: .daily, interval: 2))
+        #expect(parse("laundry every other tuesday").recurrence == Recurrence(frequency: .weekly, interval: 2, weekdays: [3]))
+        #expect(parse("sync every other mon and thu").recurrence == Recurrence(frequency: .weekly, interval: 2, weekdays: [2, 5]))
         #expect(parse("gym every mon and thu").recurrence == Recurrence(frequency: .weekly, weekdays: [2, 5]))
         #expect(parse("standup every weekday").recurrence == .weekdaysOnly)
     }
@@ -407,6 +445,104 @@ struct RecurrenceParsingTests {
 }
 
 @MainActor
+struct OverdueTests {
+    private func at(_ hour: Int, daysFromToday offset: Int = 0) -> Date {
+        let calendar = Calendar.current
+        let day = calendar.date(byAdding: .day, value: offset, to: calendar.startOfDay(for: Date()))!
+        return calendar.date(bySettingHour: hour, minute: 0, second: 0, of: day)!
+    }
+
+    @Test func aTimeStillAheadIsKept() {
+        let now = at(9)
+        let moved = ReminderEditing.rescheduling(at(15, daysFromToday: -2), hasTime: true, toDay: now, now: now)
+        #expect(moved.hasTime)
+        #expect(moved.date == at(15))
+    }
+
+    @Test func aTimeAlreadyGoneByLosesItsTime() {
+        let now = at(15)
+        let moved = ReminderEditing.rescheduling(at(9, daysFromToday: -1), hasTime: true, toDay: now, now: now)
+        #expect(!moved.hasTime)
+        #expect(moved.date == at(0))
+    }
+
+    @Test func aDateOnlyReminderJustGetsTheDay() {
+        let moved = ReminderEditing.rescheduling(at(0, daysFromToday: -3), hasTime: false, toDay: at(12), now: at(12))
+        #expect(!moved.hasTime)
+        #expect(moved.date == at(0))
+    }
+
+    @Test func tomorrowAlwaysKeepsTheTime() {
+        let now = at(15)
+        let moved = ReminderEditing.rescheduling(at(9, daysFromToday: -1), hasTime: true, toDay: at(12, daysFromToday: 1), now: now)
+        #expect(moved.hasTime)
+        #expect(moved.date == at(9, daysFromToday: 1))
+    }
+
+    @Test func nextUpGroupsByDayWithOverdueFirst() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        func item(_ id: String, days: Int, parent: String? = nil) -> ReminderItem {
+            var item = ReminderItem(id: id, title: id, listID: "l", listTitle: "L", listColor: .blue,
+                                    due: calendar.date(byAdding: .day, value: days, to: today), parentID: parent)
+            item.depth = parent == nil ? 0 : 1
+            return item
+        }
+        let section = ReminderSection(list: SmartList.nextUp, items: [
+            item("late", days: -2), item("late2", days: -1), item("now", days: 0), item("sub", days: 3, parent: "now"),
+            item("soon", days: 1), item("later", days: 20),
+        ])
+        let entries = section.entries(foldedParents: [], foldedSections: [], now: Date())
+        let titles = entries.compactMap { entry -> String? in
+            if case .day(let title, _, _) = entry { title } else { nil }
+        }
+        #expect(titles.count == 4)
+        #expect(titles.prefix(3) == ["Overdue", "Today", "Tomorrow"])
+        // One title over both late reminders, and the sub-task stays under its parent.
+        #expect(entries.count == 6 + 4)
+        if case .item(let second) = entries[2] { #expect(second.id == "late2") } else { Issue.record("not an item") }
+        if case .item(let child) = entries[5] { #expect(child.id == "sub") } else { Issue.record("not an item") }
+    }
+
+    @Test func nextUpNeverRepeatsATitle() {
+        let calendar = Calendar.current
+        let now = Date()
+        func item(_ id: String, due: Date, hasTime: Bool) -> ReminderItem {
+            var item = ReminderItem(id: id, title: id, listID: "l", listTitle: "L", listColor: .blue, due: due)
+            item.dueHasTime = hasTime
+            return item
+        }
+        // A day-only reminder for today sorts between two late ones, which must still share one title.
+        let section = ReminderSection(list: SmartList.nextUp, items: [
+            item("a", due: now.addingTimeInterval(-90_000), hasTime: true),
+            item("b", due: calendar.startOfDay(for: now), hasTime: false),
+            item("c", due: now.addingTimeInterval(-60), hasTime: true),
+        ])
+        let entries = section.entries(foldedParents: [], foldedSections: [], now: now)
+        let ids = entries.map(\.id)
+        #expect(Set(ids).count == ids.count)
+        guard case .day(let first, true, _) = entries[0] else { Issue.record("Overdue should come first"); return }
+        #expect(first == "Overdue")
+        #expect(entries.count == 5)
+    }
+
+    @Test func dayHeadings() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        #expect(dayHeading(for: today) == "Today")
+        #expect(dayHeading(for: calendar.date(byAdding: .day, value: 1, to: today)!) == "Tomorrow")
+        let inThree = calendar.date(byAdding: .day, value: 3, to: today)!
+        #expect(dayHeading(for: inThree) == inThree.formatted(.dateTime.weekday(.wide)))
+    }
+
+    @Test func nextUpIsListedAndCannotBeAddedTo() {
+        #expect(SmartList.allLists.contains { $0.id == SmartList.nextUp.id })
+        #expect(!SmartList.canAdd(to: SmartList.nextUp))
+        #expect(SmartList.sortsByTime(SmartList.nextUp))
+    }
+}
+
+@MainActor
 struct DropResolverTests {
     private let list = ReminderList(id: "work", title: "Work", color: .blue)
     private let other = ReminderList(id: "home", title: "Home", color: .green)
@@ -428,6 +564,8 @@ struct DropResolverTests {
             switch entry {
             case .heading(let info, _, _):
                 frames.headings[section.id + "|" + info.id] = CGRect(x: 0, y: y, width: 296, height: 28); y += 30
+            case .day:
+                y += 30
             case .noSection:
                 frames.headings[section.id + "|none"] = CGRect(x: 0, y: y, width: 296, height: 28); y += 30
             case .item(let item):

@@ -55,24 +55,30 @@ struct ReminderSection: Identifiable {
     /// The list's own sections, empty ones included, in order. Only regular lists have them.
     var sections: [ReminderKit.ListSection] = []
     var id: String { list.id }
+    /// How many of its reminders are late.
+    var overdueCount: Int { items.filter(isOverdue).count }
 }
 
 /// Built-in lists that EventKit doesn't expose; Remidor recreates them from due dates.
 enum SmartList {
     static let today = ReminderList(id: "smart.today", title: "Today", color: .blue, isSmart: true)
     static let scheduled = ReminderList(id: "smart.scheduled", title: "Scheduled", color: .red, isSmart: true)
+    static let nextUp = ReminderList(id: "smart.nextup", title: "Next Up", color: .purple, isSmart: true)
     static let flagged = ReminderList(id: "smart.flagged", title: "Flagged", color: .orange, isSmart: true)
     static let all = ReminderList(id: "smart.all", title: "All", color: .gray, isSmart: true)
-    static let allLists = [today, scheduled, flagged, all]
+    static let allLists = [today, nextUp, scheduled, flagged, all]
 
-    /// Whether a reminder can be added straight to the list. Scheduled can't, since it only shows what has a date.
+    /// How many reminders that aren't late yet Next Up shows after the late ones.
+    static let nextUpCount = 5
+
+    /// Whether a reminder can be added straight to the list. Scheduled and Next Up can't, since they only show what has a date.
     static func canAdd(to list: ReminderList) -> Bool {
-        list.id != scheduled.id
+        list.id != scheduled.id && list.id != nextUp.id
     }
 
     /// Smart lists that always sort by due time, then priority.
     static func sortsByTime(_ list: ReminderList) -> Bool {
-        list.id == today.id || list.id == scheduled.id
+        list.id == today.id || list.id == nextUp.id || list.id == scheduled.id
     }
 }
 

@@ -96,13 +96,17 @@ struct TaskList: View {
                 withAnimation(Self.quick) { renamingList = nil }
             }, onCancel: { withAnimation(Self.quick) { renamingList = nil } })
         } else {
-            SectionHeader(section: section, collapsed: collapsed, onToggle: {
+            SectionHeader(section: section, collapsed: collapsed, overdue: section.overdueCount,
+                          onReschedule: { model.rescheduleOverdue(in: section.items, toDay: $0) }, onToggle: {
                 if !justDragged { withAnimation(.snappy(duration: 0.4)) { model.toggleCollapsed(section.list) } }
             }, onAddReminder: SmartList.canAdd(to: section.list) ? { withAnimation(Self.quick) { addingTaskTo = section.id } } : nil,
                onAddSection: section.list.isSmart ? nil : { withAnimation(Self.quick) { addingSectionTo = section.id } },
                onRename: section.list.isSmart ? nil : { withAnimation(Self.quick) { renamingList = section.id } },
                onDelete: section.list.isSmart ? nil : { withAnimation(Self.quick) { deletingList = section.id } })
             .contextMenu {
+                let late = section.overdueCount
+                RescheduleButtons(overdue: late) { model.rescheduleOverdue(in: section.items, toDay: $0) }
+                if late > 0, SmartList.canAdd(to: section.list) || !SmartList.sortsByTime(section.list) { Divider() }
                 if SmartList.canAdd(to: section.list) {
                     Button("Add Reminder…") { withAnimation(Self.quick) { addingTaskTo = section.id } }
                 }
@@ -177,6 +181,8 @@ struct TaskList: View {
                             withAnimation(Self.quick) { addingTaskTo = nil }
                         }
                     }
+                case .day(let title, let late, _):
+                    SubheadingRow(title: title, count: 0, folded: false, onToggle: {}, foldable: false, tint: late ? .red : nil)
                 case .noSection:
                     SubheadingRow(title: "No Section", count: 0, folded: false, onToggle: {}, foldable: false)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.headings[section.id + "|none"] = $0 }
@@ -558,8 +564,10 @@ private struct SubheadingRow: View {
     var canMoveUp = false
     var canMoveDown = false
     var onDelete: () -> Void = {}
-    /// False for the title over reminders without a section: a plain label that can't be folded or edited.
+    /// False for a plain label that can't be folded or edited: the title over reminders without a section, and the days in Next Up.
     var foldable = true
+    /// Colors the title, like "Overdue" in red.
+    var tint: Color?
 
     @State private var hovering = false
 
@@ -569,7 +577,7 @@ private struct SubheadingRow: View {
 
     private var label: some View {
         Text(title).font(.callout.weight(.semibold)).lineLimit(1)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
             .padding(.horizontal, 6).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 6)
@@ -615,10 +623,28 @@ private struct SubheadingRow: View {
     }
 }
 
+/// "Move 3 Overdue to Today" and to Tomorrow, for a list that has late reminders.
+private struct RescheduleButtons: View {
+    let overdue: Int
+    let action: (Date) -> Void
+
+    var body: some View {
+        if overdue > 0 {
+            let late = overdue == 1 ? "1 Overdue" : "\(overdue) Overdue"
+            Button("Move \(late) to Today") { action(Date()) }
+            Button("Move \(late) to Tomorrow") {
+                action(Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+            }
+        }
+    }
+}
+
 /// A list's name and count. Clicking it folds the list shut or open.
 private struct SectionHeader: View {
     let section: ReminderSection
     let collapsed: Bool
+    var overdue = 0
+    var onReschedule: (Date) -> Void = { _ in }
     let onToggle: () -> Void
     var onAddReminder: (() -> Void)?
     var onAddSection: (() -> Void)?
@@ -653,10 +679,12 @@ private struct SectionHeader: View {
         .buttonStyle(.plain)
         // A + next to the chevron, only while the pointer is over the list's name.
         .overlay(alignment: .trailing) {
-            if hovering, onAddReminder != nil || onAddSection != nil || onRename != nil {
+            if hovering, onAddReminder != nil || onAddSection != nil || onRename != nil || overdue > 0 {
                 HStack(spacing: 0) {
-                    if onAddSection != nil || onRename != nil || onDelete != nil {
+                    if onAddSection != nil || onRename != nil || onDelete != nil || overdue > 0 {
                         Menu {
+                            RescheduleButtons(overdue: overdue, action: onReschedule)
+                            if overdue > 0, onAddSection != nil || onRename != nil || onDelete != nil { Divider() }
                             if let onAddSection { Button("New Section…", action: onAddSection) }
                             if let onRename { Button("Rename List…", action: onRename) }
                             if let onDelete {

@@ -76,7 +76,7 @@ enum QuickAddParser {
             claim(found.range, .recurrence, strip: true)
         }
 
-        if let found = parseRelativeDate(in: masked as String) ?? parseDate(in: masked) {
+        if let found = parseRelativeDate(in: masked as String) ?? parseEndOf(in: masked as String) ?? parseDate(in: masked) {
             result.due = found.date
             result.hasTime = found.hasTime
             claim(found.range, .date, strip: true)
@@ -130,6 +130,10 @@ enum QuickAddParser {
         if let m = find("(\\d+)\\s*(" + shortUnit + ")"), let amount = Int(ns.substring(with: m.range(at: 1))), amount > 0 {
             return (Recurrence(frequency: frequency(ofUnit: ns.substring(with: m.range(at: 2))), interval: amount), m.range)
         }
+        let dayList = "(" + dayName + "(?:(?:\\s*,\\s*|\\s+and\\s+|\\s*&\\s*|\\s*/\\s*|\\s+)" + dayName + ")*)"
+        if let m = find("other\\s+" + dayList) {
+            return (Recurrence(frequency: .weekly, interval: 2, weekdays: weekdayNumbers(in: ns.substring(with: m.range(at: 1)))), m.range)
+        }
         if let m = find("other\\s+(" + unitWord + ")") {
             return (Recurrence(frequency: frequency(ofUnit: ns.substring(with: m.range(at: 1))), interval: 2), m.range)
         }
@@ -137,16 +141,20 @@ enum QuickAddParser {
             let isWeekend = ns.substring(with: m.range(at: 1)).lowercased().hasPrefix("weekend")
             return (isWeekend ? .weekendsOnly : .weekdaysOnly, m.range)
         }
-        let list = "(" + dayName + "(?:(?:\\s*,\\s*|\\s+and\\s+|\\s*&\\s*|\\s*/\\s*|\\s+)" + dayName + ")*)"
-        if let m = find(list) {
-            let names = ns.substring(with: m.range(at: 1)).lowercased()
-            let days = matches(dayName, in: names).compactMap { weekdayNumber(of: (names as NSString).substring(with: $0.range)) }
-            return (Recurrence(frequency: .weekly, weekdays: Array(Set(days))), m.range)
+        if let m = find(dayList) {
+            return (Recurrence(frequency: .weekly, weekdays: weekdayNumbers(in: ns.substring(with: m.range(at: 1)))), m.range)
         }
         if let m = find("(" + unitWord + ")") {
             return (Recurrence(frequency: frequency(ofUnit: ns.substring(with: m.range(at: 1)))), m.range)
         }
         return nil
+    }
+
+    /// The weekdays named in "mon and thu", without repeats.
+    private static func weekdayNumbers(in names: String) -> [Int] {
+        let lowered = names.lowercased()
+        let days = matches(dayName, in: lowered).compactMap { weekdayNumber(of: (lowered as NSString).substring(with: $0.range)) }
+        return Array(Set(days))
     }
 
     /// 1 for Sunday through 7 for Saturday.
@@ -182,21 +190,58 @@ enum QuickAddParser {
         return word
     }
 
-    /// "in 20 min", "in 2h", "in 3 days": the system detector misses most of these.
+    private static let numberWords = ["a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+                                      "seven": 7, "eight": 8, "nine": 9, "ten": 10, "twelve": 12]
+
+    /// "in 20 min", "in 2h", "in 3 days", "in two weeks", "in a month", "in half an hour": the system
+    /// detector misses most of these.
     private static func parseRelativeDate(in text: String) -> DateMatch? {
-        let pattern = #"(?i)(?<!\S)in\s+(\d+)\s*(minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|wks?|w)(?!\S)"#
-        guard let match = matches(pattern, in: text).first else { return nil }
         let ns = text as NSString
-        let amount = Int(ns.substring(with: match.range(at: 1))) ?? 0
-        let unit = ns.substring(with: match.range(at: 2)).lowercased()
-        let (component, hasTime): (Calendar.Component, Bool) = switch unit.first {
-        case "m": (.minute, true)
-        case "h": (.hour, true)
-        case "d": (.day, false)
+        let digits = #"(?i)(?<!\S)in\s+(\d+)\s*(minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|wks?|w|months?|mos?|years?|yrs?|y)(?!\S)"#
+        let words = #"(?i)(?<!\S)in\s+(an?|one|two|three|four|five|six|seven|eight|nine|ten|twelve)\s+(minutes?|mins?|hours?|hrs?|days?|weeks?|wks?|months?|years?)(?!\S)"#
+        let half = #"(?i)(?<!\S)in\s+half\s+an?\s+hour(?!\S)"#
+
+        var amount = 0
+        var unit = ""
+        var range = NSRange(location: NSNotFound, length: 0)
+        if let match = matches(digits, in: text).first {
+            amount = Int(ns.substring(with: match.range(at: 1))) ?? 0
+            unit = ns.substring(with: match.range(at: 2)).lowercased()
+            range = match.range
+        } else if let match = matches(words, in: text).first {
+            amount = numberWords[ns.substring(with: match.range(at: 1)).lowercased()] ?? 0
+            unit = ns.substring(with: match.range(at: 2)).lowercased()
+            range = match.range
+        } else if let match = matches(half, in: text).first {
+            guard let date = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) else { return nil }
+            return (date, true, match.range)
+        }
+        guard range.location != NSNotFound else { return nil }
+
+        // "m" is minutes and "mo" months, so a single letter is only read as minutes.
+        let (component, hasTime): (Calendar.Component, Bool) = switch unit {
+        case "m", "min", "mins", "minute", "minutes": (.minute, true)
+        case _ where unit.hasPrefix("mo"): (.month, false)
+        case _ where unit.first == "h": (.hour, true)
+        case _ where unit.first == "d": (.day, false)
+        case _ where unit.first == "y": (.year, false)
         default: (.weekOfYear, false)
         }
-        guard amount > 0, let date = Calendar.current.date(byAdding: component, value: amount, to: Date()) else { return nil }
-        return (date, hasTime, match.range)
+        guard amount > 0, amount <= 1000, let date = Calendar.current.date(byAdding: component, value: amount, to: Date()) else { return nil }
+        return (hasTime ? date : Calendar.current.startOfDay(for: date), hasTime, range)
+    }
+
+    /// "end of the month", "end of year", "eom": the last day of this month or year.
+    private static func parseEndOf(in text: String) -> DateMatch? {
+        let pattern = #"(?i)(?<!\S)(?:end\s+of\s+(?:the\s+|this\s+)?(month|year)|(eom|eoy))(?![\p{L}\p{N}])"#
+        guard let match = matches(pattern, in: text).first else { return nil }
+        let ns = text as NSString
+        let word = (group(match, 1, in: ns) ?? group(match, 2, in: ns) ?? "").lowercased()
+        let calendar = Calendar.current
+        let unit: Calendar.Component = word == "year" || word == "eoy" ? .year : .month
+        guard let interval = calendar.dateInterval(of: unit, for: Date()),
+              let last = calendar.date(byAdding: .day, value: -1, to: interval.end) else { return nil }
+        return (calendar.startOfDay(for: last), false, match.range)
     }
 
     private static func parseDate(in masked: NSMutableString) -> DateMatch? {

@@ -101,9 +101,12 @@ enum ListEntry: Identifiable {
     /// The title over the reminders that are in no section, which come after all the sections.
     case noSection
     case item(ReminderItem)
+    /// A day's title over its reminders in Next Up. A label only: it can't be picked, folded or dragged.
+    case day(title: String, isOverdue: Bool, key: String)
 
     var id: String {
         switch self {
+        case .day(_, _, let key): "day:" + key
         case .heading(let section, _, _): "section:" + section.id
         case .noSection: "section:none"
         case .item(let item): item.id
@@ -115,8 +118,9 @@ extension ReminderSection {
     /// The rows in the order shown: each section's heading with its reminders under it, then the reminders
     /// that are in no section under a heading of their own. Folded sections show only their heading. Lists
     /// without sections are plain reminders.
-    func entries(foldedParents: Set<String>, foldedSections: Set<String>) -> [ListEntry] {
+    func entries(foldedParents: Set<String>, foldedSections: Set<String>, now: Date = Date()) -> [ListEntry] {
         let visible = items.hidingFoldedSubtasks(foldedParents)
+        if list.id == SmartList.nextUp.id { return dayEntries(of: visible, now: now) }
         guard !list.isSmart, !sections.isEmpty else { return visible.map(ListEntry.item) }
         let known = Set(sections.map(\.id))
         var result: [ListEntry] = []
@@ -132,5 +136,32 @@ extension ReminderSection {
             result += loose.map(ListEntry.item)
         }
         return result
+    }
+
+    /// Next Up: everything late under "Overdue", then a title for each day. A sub-task stays under its parent.
+    /// A reminder goes under the title it belongs to wherever it sits in the list, so a title never shows twice.
+    private func dayEntries(of visible: [ReminderItem], now: Date) -> [ListEntry] {
+        let calendar = Calendar.current
+        var groups: [(key: String, title: String, late: Bool, items: [ReminderItem])] = []
+        var current: Int?
+        for item in visible {
+            if item.depth == 0 || current == nil, let due = item.due {
+                let late = isOverdue(item)
+                let day = calendar.startOfDay(for: due)
+                let key = late ? "overdue" : String(day.timeIntervalSinceReferenceDate)
+                if let existing = groups.firstIndex(where: { $0.key == key }) {
+                    current = existing
+                } else {
+                    groups.append((key, late ? "Overdue" : dayHeading(for: day, now: now), late, []))
+                    current = groups.count - 1
+                }
+            }
+            if let current { groups[current].items.append(item) }
+        }
+        // What is late always comes first, the days after it in the order they came.
+        let ordered = groups.filter(\.late) + groups.filter { !$0.late }
+        return ordered.flatMap { group in
+            [ListEntry.day(title: group.title, isOverdue: group.late, key: group.key)] + group.items.map(ListEntry.item)
+        }
     }
 }

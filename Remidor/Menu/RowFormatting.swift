@@ -81,6 +81,22 @@ func dueText(_ item: ReminderItem) -> String? {
     item.due.map { describeDue($0, hasTime: item.dueHasTime) }
 }
 
+/// "Today", "Tomorrow", a weekday for the rest of the week, then "Mon, Nov 2". The title over a day in Next Up.
+func dayHeading(for date: Date, now: Date = Date()) -> String {
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: now)
+    let days = calendar.dateComponents([.day], from: today, to: calendar.startOfDay(for: date)).day ?? 0
+    switch days {
+    case 0: return "Today"
+    case 1: return "Tomorrow"
+    case 2...6: return date.formatted(.dateTime.weekday(.wide))
+    default:
+        return calendar.isDate(date, equalTo: now, toGranularity: .year)
+            ? date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+            : date.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+}
+
 /// A reminder with a time is overdue once that time has passed; a date-only one once its day has.
 func isOverdue(_ item: ReminderItem) -> Bool {
     guard let due = item.due else { return false }

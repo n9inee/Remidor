@@ -40,6 +40,8 @@ struct DropResolver {
                     if moving.listID != section.list.id { return DropTarget(action: .move(section.list), rect: frames.headers[section.id] ?? rect) }
                     guard moving.sectionID != info.id else { return nil }
                     return DropTarget(action: .section(id: info.id, title: info.title), rect: rect)
+                case .day:
+                    continue
                 case .noSection:
                     // The title over reminders without a section takes reminders of its own list out of their section.
                     guard !section.list.isSmart, let rect = frames.headings[section.id + "|none"], rect.contains(location) else { continue }

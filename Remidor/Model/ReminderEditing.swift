@@ -35,6 +35,13 @@ enum ReminderEditing {
         return (moved ?? day, true)
     }
 
+    /// Like `moving`, but never lands in the past: a time that has already gone by on that day is dropped.
+    nonisolated static func rescheduling(_ due: Date?, hasTime: Bool, toDay day: Date, now: Date = Date()) -> (date: Date, hasTime: Bool) {
+        let moved = moving(due, hasTime: hasTime, toDay: day)
+        guard moved.hasTime, moved.date < now else { return moved }
+        return (Calendar.current.startOfDay(for: day), false)
+    }
+
     /// A sensible time to start from when a date gets a time for the first time: the next full hour.
     nonisolated static func defaultTime(on day: Date, now: Date = Date()) -> Date {
         let calendar = Calendar.current
