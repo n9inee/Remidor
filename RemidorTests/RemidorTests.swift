@@ -755,4 +755,16 @@ struct FocusTests {
         try await Task.sleep(for: .milliseconds(400))
         #expect(window.firstResponder is NSTextView)
     }
+
+    @Test func renamingSelectsTheWholeName() async throws {
+        let field = HighlightedTextField(text: .constant("Groceries"), placeholder: "Name", tokens: [], color: { _ in .clear },
+                                         focusTrigger: 1, onSubmit: {}, onTab: { true }, selectsAllOnFocus: true)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 240, height: 30), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = NSHostingView(rootView: field.frame(width: 240, height: 30))
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        try await Task.sleep(for: .milliseconds(400))
+        let editor = try #require(window.firstResponder as? NSTextView)
+        #expect(editor.selectedRange() == NSRange(location: 0, length: 9))
+    }
 }

@@ -23,12 +23,15 @@ struct HighlightedTextField: NSViewRepresentable {
     /// Return true to keep Tab inside the field; false lets it move focus to the next control.
     var onTab: () -> Bool
     var onMove: (Int) -> Bool = { _ in false }
+    /// Selects the whole text when focus arrives, as when renaming; otherwise the cursor goes to the end.
+    var selectsAllOnFocus = false
 
     private static let font = NSFont.systemFont(ofSize: 13)
 
     /// A field that takes focus as soon as it is in a window, for one asked to focus while it was still being built.
     final class FocusingField: NSTextField {
         var focusWhenAttached = false
+        var selectsAll = false
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -38,7 +41,8 @@ struct HighlightedTextField: NSViewRepresentable {
             DispatchQueue.main.async { [weak self] in
                 guard let self, let window = self.window else { return }
                 window.makeFirstResponder(self)
-                (self.currentEditor() as? NSTextView)?.setSelectedRange(NSRange(location: (self.stringValue as NSString).length, length: 0))
+                let length = (self.stringValue as NSString).length
+                (self.currentEditor() as? NSTextView)?.setSelectedRange(NSRange(location: self.selectsAll ? 0 : length, length: self.selectsAll ? length : 0))
             }
         }
     }
@@ -71,11 +75,13 @@ struct HighlightedTextField: NSViewRepresentable {
 
         if focusTrigger != context.coordinator.lastFocus {
             context.coordinator.lastFocus = focusTrigger
+            (field as? FocusingField)?.selectsAll = selectsAllOnFocus
             if field.window == nil {
                 (field as? FocusingField)?.focusWhenAttached = true
             } else {
                 field.window?.makeFirstResponder(field)
-                (field.currentEditor() as? NSTextView)?.setSelectedRange(end)
+                let all = NSRange(location: 0, length: end.location)
+                (field.currentEditor() as? NSTextView)?.setSelectedRange(selectsAllOnFocus ? all : end)
             }
         }
     }

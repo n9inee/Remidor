@@ -26,7 +26,7 @@ struct NameField: View {
     var body: some View {
         HStack(spacing: 6) {
             HighlightedTextField(text: $text, placeholder: placeholder, tokens: [], color: { _ in .clear },
-                                 focusTrigger: focusTrigger, onSubmit: submit, onTab: { true })
+                                 focusTrigger: focusTrigger, onSubmit: submit, onTab: { true }, selectsAllOnFocus: true)
                 .frame(maxWidth: .infinity)
             Button("Cancel", action: onCancel).controlSize(.small)
             Button("Save", action: submit).controlSize(.small).buttonStyle(.borderedProminent)
