@@ -65,6 +65,11 @@ enum SmartList {
     static let all = ReminderList(id: "smart.all", title: "All", color: .gray, isSmart: true)
     static let allLists = [today, scheduled, flagged, all]
 
+    /// Whether a reminder can be added straight to the list. Scheduled can't, since it only shows what has a date.
+    static func canAdd(to list: ReminderList) -> Bool {
+        list.id != scheduled.id
+    }
+
     /// Smart lists that always sort by due time, then priority.
     static func sortsByTime(_ list: ReminderList) -> Bool {
         list.id == today.id || list.id == scheduled.id

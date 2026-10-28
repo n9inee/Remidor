@@ -66,10 +66,20 @@ struct TaskRow: View {
     @ViewBuilder private var contextMenu: some View {
         Button("Open") { model.openInReminders(item) }
         Button("Edit") { editing = true }
+        Button("Details") { expanded.toggle() }
         // Reminders only goes one level deep, so a sub-task can't have sub-tasks of its own.
         if item.parentID == nil {
+            Divider()
             Button("Add Sub-task…") { withAnimation(.snappy(duration: 0.2)) { addingSubtask = true } }
+            if item.childCount > 0 {
+                Menu("Sort Sub-tasks") {
+                    SortChoices(current: model.subtaskSortOrders[item.id], inherited: listOrder, inheritedTitle: "Same as the List") {
+                        model.setSubtaskOrder($0, for: item)
+                    }
+                }
+            }
         }
+        Divider()
         Menu("Date") {
             Button("Today") { model.setDay(item, to: Date()) }
             Button("Tomorrow") { model.setDay(item, to: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()) }
@@ -94,18 +104,11 @@ struct TaskRow: View {
                 }
             }
         }
-        if item.childCount > 0 {
-            Menu("Sort Sub-tasks") {
-                SortChoices(current: model.subtaskSortOrders[item.id], inherited: listOrder, inheritedTitle: "Same as the List") {
-                    model.setSubtaskOrder($0, for: item)
-                }
-            }
-        }
+        Divider()
         Button("Move Up") { model.moveReminder(item, by: -1) }
             .disabled(model.neighbor(of: item, offset: -1) == nil)
         Button("Move Down") { model.moveReminder(item, by: 1) }
             .disabled(model.neighbor(of: item, offset: 1) == nil)
-        Button("Details") { expanded.toggle() }
         Divider()
         Button("Delete…", role: .destructive) { confirmingDelete = true }
     }

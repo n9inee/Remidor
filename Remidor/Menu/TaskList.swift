@@ -98,13 +98,17 @@ struct TaskList: View {
         } else {
             SectionHeader(section: section, collapsed: collapsed, onToggle: {
                 if !justDragged { withAnimation(.snappy(duration: 0.4)) { model.toggleCollapsed(section.list) } }
-            }, onAddSection: section.list.isSmart ? nil : { withAnimation(Self.quick) { addingSectionTo = section.id } },
+            }, onAddReminder: SmartList.canAdd(to: section.list) ? { withAnimation(Self.quick) { addingTaskTo = section.id } } : nil,
+               onAddSection: section.list.isSmart ? nil : { withAnimation(Self.quick) { addingSectionTo = section.id } },
                onRename: section.list.isSmart ? nil : { withAnimation(Self.quick) { renamingList = section.id } },
                onDelete: section.list.isSmart ? nil : { withAnimation(Self.quick) { deletingList = section.id } })
             .contextMenu {
-                if !section.list.isSmart {
+                if SmartList.canAdd(to: section.list) {
                     Button("Add Reminder…") { withAnimation(Self.quick) { addingTaskTo = section.id } }
+                }
+                if !section.list.isSmart {
                     Button("New Section…") { withAnimation(Self.quick) { addingSectionTo = section.id } }
+                    Divider()
                     Button("Rename List…") { withAnimation(Self.quick) { renamingList = section.id } }
                 }
                 // Today and Scheduled always sort by time, so there is nothing to choose for them.
@@ -599,6 +603,7 @@ private struct SubheadingRow: View {
         .contextMenu {
             Button("Add Reminder…", action: onAddReminder)
             Button("Rename…", action: onRename)
+            Divider()
             Button("Move Up") { onMove(-1) }.disabled(!canMoveUp)
             Button("Move Down") { onMove(1) }.disabled(!canMoveDown)
             Divider()
@@ -615,6 +620,7 @@ private struct SectionHeader: View {
     let section: ReminderSection
     let collapsed: Bool
     let onToggle: () -> Void
+    var onAddReminder: (() -> Void)?
     var onAddSection: (() -> Void)?
     var onRename: (() -> Void)?
     var onDelete: (() -> Void)?
@@ -647,10 +653,11 @@ private struct SectionHeader: View {
         .buttonStyle(.plain)
         // A + next to the chevron, only while the pointer is over the list's name.
         .overlay(alignment: .trailing) {
-            if hovering, onAddSection != nil || onRename != nil {
+            if hovering, onAddReminder != nil || onAddSection != nil || onRename != nil {
                 HStack(spacing: 0) {
-                    if onRename != nil || onDelete != nil {
+                    if onAddSection != nil || onRename != nil || onDelete != nil {
                         Menu {
+                            if let onAddSection { Button("New Section…", action: onAddSection) }
                             if let onRename { Button("Rename List…", action: onRename) }
                             if let onDelete {
                                 Divider()
@@ -668,8 +675,8 @@ private struct SectionHeader: View {
                         .help("More for \(section.list.title)")
                         .accessibilityLabel("More for \(section.list.title)")
                     }
-                    if let onAddSection {
-                        Button(action: onAddSection) {
+                    if let onAddReminder {
+                        Button(action: onAddReminder) {
                             Image(systemName: "plus")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(.secondary)
@@ -677,8 +684,8 @@ private struct SectionHeader: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("Add a section to \(section.list.title)")
-                        .accessibilityLabel("Add a section to \(section.list.title)")
+                        .help("Add a reminder to \(section.list.title)")
+                        .accessibilityLabel("Add a reminder to \(section.list.title)")
                     }
                 }
                 .padding(.trailing, 24)

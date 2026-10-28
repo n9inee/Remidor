@@ -27,7 +27,19 @@ struct TaskComposer: View {
         self.sectionID = sectionID
         self.placeholder = placeholder
         self.onDone = onDone
-        _draft = State(initialValue: QuickAddDraft(adding: listID, model: model))
+        _draft = State(initialValue: Self.makeDraft(for: listID, model: model))
+    }
+
+    /// A smart list has no list of its own: a reminder added there goes to the default list, with what the
+    /// smart list shows already set, the flag for Flagged and today's date for Today.
+    private static func makeDraft(for listID: String, model: TaskModel) -> QuickAddDraft {
+        guard let smart = SmartList.allLists.first(where: { $0.id == listID }) else {
+            return QuickAddDraft(adding: listID, model: model)
+        }
+        let draft = model.defaultListID.map { QuickAddDraft(adding: $0, model: model) } ?? QuickAddDraft(model: model)
+        if smart.id == SmartList.flagged.id { draft.pickedFlag = true }
+        if smart.id == SmartList.today.id { draft.pickedDate = Calendar.current.startOfDay(for: Date()) }
+        return draft
     }
 
     var body: some View {
