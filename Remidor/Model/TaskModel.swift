@@ -63,6 +63,18 @@ final class TaskModel {
         didSet { UserDefaults.standard.set(defaultMinutes, forKey: DefaultsKey.defaultMinutes) }
     }
 
+    /// The weekday "Next week" lands on, and the one "Weekend" lands on (1 is Sunday ... 7 is Saturday).
+    var weekStart: Int = UserDefaults.standard.object(forKey: DefaultsKey.weekStart) as? Int ?? 2 {
+        didSet { UserDefaults.standard.set(weekStart, forKey: DefaultsKey.weekStart) }
+    }
+
+    var weekendStart: Int = UserDefaults.standard.object(forKey: DefaultsKey.weekendStart) as? Int ?? 7 {
+        didSet { UserDefaults.standard.set(weekendStart, forKey: DefaultsKey.weekendStart) }
+    }
+
+    var nextWeekDay: Date { ReminderEditing.nextWeekStart(weekStart) }
+    var weekendDay: Date { ReminderEditing.weekend(startingOn: weekendStart) }
+
     var sortOrder = SortOrder(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.sortOrder) ?? "") ?? .dueDate {
         didSet {
             UserDefaults.standard.set(sortOrder.rawValue, forKey: DefaultsKey.sortOrder)

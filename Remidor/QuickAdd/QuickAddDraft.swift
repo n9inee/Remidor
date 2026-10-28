@@ -120,7 +120,8 @@ final class QuickAddDraft {
             untouched.title = text
             parsed = untouched
         } else {
-            parsed = QuickAddParser.parse(text, listNames: lockedListID == nil ? realLists.map(\.title) : [])
+            parsed = QuickAddParser.parse(text, listNames: lockedListID == nil ? realLists.map(\.title) : [],
+                                          weekStart: model.weekStart, weekendStart: model.weekendStart)
         }
     }
 
@@ -212,6 +213,10 @@ final class QuickAddDraft {
         pickedDate = date
         if let hasTime { pickedHasTime = hasTime }
     }
+
+    /// Day choices that follow the week and weekend settings.
+    var nextWeekDay: Date { model.nextWeekDay }
+    var weekendDay: Date { model.weekendDay }
 
     func setTime(_ enabled: Bool) {
         let current = due ?? Date()

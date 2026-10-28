@@ -109,7 +109,8 @@ struct QuickAddControls: View {
             HStack(spacing: 6) {
                 quickDate("Today", daysFromNow: 0)
                 quickDate("Tomorrow", daysFromNow: 1)
-                quickDate("Next week", daysFromNow: 7)
+                quickDate("Weekend", day: draft.weekendDay)
+                quickDate("Next week", day: draft.nextWeekDay)
                 Spacer()
                 Button("Clear") { draft.clearDate() }.controlSize(.small)
             }
@@ -122,11 +123,12 @@ struct QuickAddControls: View {
     }
 
     private func quickDate(_ title: String, daysFromNow days: Int) -> some View {
-        Button(title) {
-            let today = Calendar.current.startOfDay(for: Date())
-            draft.setDate(Calendar.current.date(byAdding: .day, value: days, to: today) ?? today, hasTime: false)
-        }
-        .controlSize(.small)
+        quickDate(title, day: Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date())
+    }
+
+    private func quickDate(_ title: String, day: Date) -> some View {
+        Button(title) { draft.setDate(Calendar.current.startOfDay(for: day), hasTime: false) }
+            .controlSize(.small)
     }
 
     private var dateLabel: String {

@@ -26,6 +26,23 @@ enum ReminderEditing {
         if hasTime { reminder.addAlarm(EKAlarm(absoluteDate: date)) }
     }
 
+    /// The first day of next week: the next `weekStart` (1 is Sunday ... 7 is Saturday) after today.
+    nonisolated static func nextWeekStart(_ weekStart: Int, from now: Date = Date()) -> Date {
+        let today = Calendar.current.startOfDay(for: now)
+        return day(weekStart, onOrAfter: Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today)
+    }
+
+    /// The coming weekend: today when it is the first day of the weekend, otherwise the next one.
+    nonisolated static func weekend(startingOn weekendStart: Int, from now: Date = Date()) -> Date {
+        day(weekendStart, onOrAfter: Calendar.current.startOfDay(for: now))
+    }
+
+    private nonisolated static func day(_ weekday: Int, onOrAfter start: Date) -> Date {
+        let calendar = Calendar.current
+        let ahead = (weekday - calendar.component(.weekday, from: start) + 7) % 7
+        return calendar.date(byAdding: .day, value: ahead, to: start) ?? start
+    }
+
     /// The same time of day on another day. A reminder without a time simply gets the new day.
     nonisolated static func moving(_ due: Date?, hasTime: Bool, toDay day: Date) -> (date: Date, hasTime: Bool) {
         let calendar = Calendar.current

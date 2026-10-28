@@ -30,7 +30,7 @@ enum QuickAddParser {
 
     // MARK: Parsing
 
-    static func parse(_ input: String, listNames: [String]) -> Result {
+    static func parse(_ input: String, listNames: [String], weekStart: Int = 2, weekendStart: Int = 7) -> Result {
         let ns = input as NSString
         let masked = NSMutableString(string: input)   // recognized pieces are blanked out as they're claimed
         var result = Result()
@@ -76,7 +76,8 @@ enum QuickAddParser {
             claim(found.range, .recurrence, strip: true)
         }
 
-        if let found = parseRelativeDate(in: masked as String) ?? parseEndOf(in: masked as String) ?? parseDate(in: masked) {
+        if let found = parseWeekPhrase(in: masked as String, weekStart: weekStart, weekendStart: weekendStart)
+            ?? parseRelativeDate(in: masked as String) ?? parseEndOf(in: masked as String) ?? parseDate(in: masked) {
             result.due = found.date
             result.hasTime = found.hasTime
             claim(found.range, .date, strip: true)
@@ -192,6 +193,19 @@ enum QuickAddParser {
 
     private static let numberWords = ["a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
                                       "seven": 7, "eight": 8, "nine": 9, "ten": 10, "twelve": 12]
+
+    /// "next week" and "weekend": the days chosen in Settings, like the buttons.
+    private static func parseWeekPhrase(in text: String, weekStart: Int, weekendStart: Int) -> DateMatch? {
+        let nextWeek = #"(?i)(?<!\S)(?:next|nxt)\s+(?:week|wk)(?![\p{L}\p{N}])"#
+        let weekend = #"(?i)(?<!\S)(?:(?:this|next|nxt)\s+)?weekend(?![\p{L}\p{N}])"#
+        if let match = matches(nextWeek, in: text).first {
+            return (ReminderEditing.nextWeekStart(weekStart), false, match.range)
+        }
+        if let match = matches(weekend, in: text).first {
+            return (ReminderEditing.weekend(startingOn: weekendStart), false, match.range)
+        }
+        return nil
+    }
 
     /// "in 20 min", "in 2h", "in 3 days", "in two weeks", "in a month", "in half an hour": the system
     /// detector misses most of these.

@@ -24,6 +24,7 @@ A menu bar companion for the macOS **Reminders** app. See what's open at a glanc
 - **Focus timer.** Click a task, pick how long, and watch the countdown in the menu bar. Extend it or check the task off when time is up.
 - **Shortcuts.** **⌥Space** opens a floating box from anywhere to add a reminder, or to find one and check it off (**⇧↩**). Tasks are grouped like the dropdown, and an ⓘ opens a task's details. **⇧⌥O** opens the Reminders app. Both can be changed in Settings.
 - **Undo.** Checked something off by accident? Use the banner, **⌘Z**, or the Recent menu. Checking off a parent checks off its sub-tasks, and undo brings them back.
+- **Week and weekend.** The date choices include Weekend and Next Week. They land on the days you pick in Settings, Monday and Saturday unless you change them.
 - **Right-click menu.** Open, Edit, Add Sub-task, Date, Priority, Flag, List, Sort Sub-tasks, Move Up, Move Down, Details and Delete. A list's name has its own: New Section, Rename, Sort By and Delete.
 
 <p align="center">
@@ -36,7 +37,7 @@ Type naturally and Remidor highlights what it understood as you go:
 
 | Type | Examples | Result |
 | --- | --- | --- |
-| Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `in 20 min`, `in two weeks`, `in a month`, `end of month` | Due date, with an alert when a time is given |
+| Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `in 20 min`, `in two weeks`, `in a month`, `end of month`, `weekend`, `next week` | Due date, with an alert when a time is given |
 | Repeat | `every sunday`, `ev day`, `every 2 weeks`, `every mon and thu`, `every other tue`, `every weekday` | Repeats, starting on the next matching day |
 | Priority | `!` `!!` `!!!` | Low, medium, high |
 | Flag | `*` | Flags the reminder |

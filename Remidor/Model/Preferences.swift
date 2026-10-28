@@ -19,6 +19,8 @@ enum DefaultsKey {
     static let collapsedSections = "collapsedSectionIDs"
     static let listSortOrders = "listSortOrders"
     static let subtaskSortOrders = "subtaskSortOrders"
+    static let weekStart = "weekStartDay"
+    static let weekendStart = "weekendStartDay"
     static let dropdownMaxHeight = "dropdownMaxHeight"
     static let checkForUpdates = "checkForUpdates"
     static let lastUpdateCheck = "lastUpdateCheck"

@@ -47,6 +47,16 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
                 }
+                GroupBox("Week") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Picker("Week starts on", selection: $model.weekStart) { weekdayChoices }
+                        Picker("Weekend starts on", selection: $model.weekendStart) { weekdayChoices }
+                        Text("Next Week and Weekend in the date choices land on these days.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+                }
                 GroupBox("Timer") {
                     VStack(spacing: 8) {
                         Text("Default duration").frame(maxWidth: .infinity, alignment: .leading)
@@ -88,6 +98,11 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             launchAtLogin.refresh()
         }
+    }
+
+    /// Monday through Sunday, tagged with Calendar's weekday numbers (1 is Sunday).
+    private var weekdayChoices: some View {
+        ForEach([2, 3, 4, 5, 6, 7, 1], id: \.self) { Text(Calendar.current.weekdaySymbols[$0 - 1]).tag($0) }
     }
 
     private var updatesRow: some View {

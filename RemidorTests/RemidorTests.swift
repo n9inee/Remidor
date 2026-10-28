@@ -768,3 +768,40 @@ struct FocusTests {
         #expect(editor.selectedRange() == NSRange(location: 0, length: 9))
     }
 }
+
+
+struct WeekDayTests {
+    private func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
+        Calendar.current.date(from: DateComponents(year: y, month: m, day: d, hour: 15))!
+    }
+    private func weekday(_ date: Date) -> Int { Calendar.current.component(.weekday, from: date) }
+
+    @Test func nextWeekLandsOnTheChosenDayAfterToday() {
+        let wednesday = date(2026, 10, 28)
+        #expect(weekday(ReminderEditing.nextWeekStart(2, from: wednesday)) == 2)
+        #expect(Calendar.current.component(.day, from: ReminderEditing.nextWeekStart(2, from: wednesday)) == 2)
+        #expect(Calendar.current.component(.day, from: ReminderEditing.nextWeekStart(1, from: wednesday)) == 1)
+        // On the start day itself it means the following week.
+        let monday = date(2026, 10, 26)
+        #expect(Calendar.current.component(.day, from: ReminderEditing.nextWeekStart(2, from: monday)) == 2)
+    }
+
+    @Test func typedPhrasesFollowTheChosenDays() {
+        let next = QuickAddParser.parse("plan trip next week", listNames: [], weekStart: 1)
+        #expect(next.title == "plan trip")
+        #expect(weekday(try! #require(next.due)) == 1)
+        let weekend = QuickAddParser.parse("hike weekend", listNames: [], weekendStart: 6)
+        #expect(weekend.title == "hike")
+        #expect(weekday(try! #require(weekend.due)) == 6)
+        let repeating = QuickAddParser.parse("clean every weekend", listNames: [])
+        #expect(repeating.recurrence == .weekendsOnly)
+    }
+
+    @Test func weekendIsTodayWhenItStartsToday() {
+        let saturday = date(2026, 10, 31)
+        #expect(Calendar.current.isDate(ReminderEditing.weekend(startingOn: 7, from: saturday), inSameDayAs: saturday))
+        let wednesday = date(2026, 10, 28)
+        #expect(Calendar.current.component(.day, from: ReminderEditing.weekend(startingOn: 7, from: wednesday)) == 31)
+        #expect(Calendar.current.component(.day, from: ReminderEditing.weekend(startingOn: 6, from: wednesday)) == 30)
+    }
+}

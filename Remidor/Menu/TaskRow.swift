@@ -83,7 +83,8 @@ struct TaskRow: View {
         Menu("Date") {
             Button("Today") { model.setDay(item, to: Date()) }
             Button("Tomorrow") { model.setDay(item, to: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()) }
-            Button("Next Week") { model.setDay(item, to: Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()) }
+            Button("Weekend") { model.setDay(item, to: model.weekendDay) }
+            Button("Next Week") { model.setDay(item, to: model.nextWeekDay) }
             if item.due != nil {
                 Divider()
                 Button("Remove Date") { model.setDue(item, to: nil, hasTime: false) }
