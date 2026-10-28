@@ -26,8 +26,25 @@ struct HighlightedTextField: NSViewRepresentable {
 
     private static let font = NSFont.systemFont(ofSize: 13)
 
+    /// A field that takes focus as soon as it is in a window, for one asked to focus while it was still being built.
+    final class FocusingField: NSTextField {
+        var focusWhenAttached = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard focusWhenAttached, window != nil else { return }
+            focusWhenAttached = false
+            // The window is still settling when it gets here, so ask once it has.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window else { return }
+                window.makeFirstResponder(self)
+                (self.currentEditor() as? NSTextView)?.setSelectedRange(NSRange(location: (self.stringValue as NSString).length, length: 0))
+            }
+        }
+    }
+
     func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField()
+        let field = FocusingField()
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
@@ -54,8 +71,12 @@ struct HighlightedTextField: NSViewRepresentable {
 
         if focusTrigger != context.coordinator.lastFocus {
             context.coordinator.lastFocus = focusTrigger
-            field.window?.makeFirstResponder(field)
-            (field.currentEditor() as? NSTextView)?.setSelectedRange(end)
+            if field.window == nil {
+                (field as? FocusingField)?.focusWhenAttached = true
+            } else {
+                field.window?.makeFirstResponder(field)
+                (field.currentEditor() as? NSTextView)?.setSelectedRange(end)
+            }
         }
     }
 

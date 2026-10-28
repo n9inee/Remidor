@@ -742,3 +742,17 @@ struct DropResolverTests {
         #expect(before.target == "work" && !before.after)
     }
 }
+
+@MainActor
+struct FocusTests {
+    @Test func aBoxTakesFocusAsSoonAsItAppears() async throws {
+        let field = HighlightedTextField(text: .constant(""), placeholder: "Name", tokens: [], color: { _ in .clear },
+                                         focusTrigger: 1, onSubmit: {}, onTab: { true })
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 240, height: 30), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = NSHostingView(rootView: field.frame(width: 240, height: 30))
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(window.firstResponder is NSTextView)
+    }
+}
