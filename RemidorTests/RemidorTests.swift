@@ -240,7 +240,7 @@ struct OrderingTests {
         let folded = section.entries(foldedParents: [], foldedSections: ["f"])
         #expect(folded.map(\.id) == ["section:f", "section:e", "section:h", "c", "section:none", "loose"])
         // Smart lists never show sections.
-        let smart = ReminderSection(list: SmartList.today, items: withIDs, sections: [food])
+        let smart = ReminderSection(list: SmartList.flagged, items: withIDs, sections: [food])
         #expect(smart.entries(foldedParents: [], foldedSections: []).count == 4)
     }
 
@@ -502,6 +502,41 @@ struct OverdueTests {
         #expect(entries.count == 6 + 4)
         if case .item(let second) = entries[2] { #expect(second.id == "late2") } else { Issue.record("not an item") }
         if case .item(let child) = entries[5] { #expect(child.id == "sub") } else { Issue.record("not an item") }
+    }
+
+    @Test func todaySplitsIntoPartsOfTheDay() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        func item(_ id: String, hour: Int?, days: Int = 0) -> ReminderItem {
+            let day = calendar.date(byAdding: .day, value: days, to: today)!
+            let due = hour.map { calendar.date(bySettingHour: $0, minute: 0, second: 0, of: day)! } ?? day
+            return ReminderItem(id: id, title: id, listID: "l", listTitle: "L", listColor: .blue, due: due, dueHasTime: hour != nil)
+        }
+        let now = calendar.date(bySettingHour: 7, minute: 0, second: 0, of: today)!
+        let section = ReminderSection(list: SmartList.today, items: [
+            item("late", hour: nil, days: -1), item("day", hour: nil), item("am", hour: 9), item("noon", hour: 12),
+            item("pm", hour: 16), item("night", hour: 17), item("late-night", hour: 23),
+        ])
+        let entries = section.entries(foldedParents: [], foldedSections: [], now: now)
+        let titles = entries.compactMap { entry -> String? in
+            if case .day(let title, _, _) = entry { title } else { nil }
+        }
+        #expect(titles == ["Overdue", "All-Day", "Morning", "Afternoon", "Tonight"])
+        #expect(entries.count == 7 + 5)
+    }
+
+    @Test func scheduledGroupsByDayLikeNextUp() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        func item(_ id: String, days: Int) -> ReminderItem {
+            ReminderItem(id: id, title: id, listID: "l", listTitle: "L", listColor: .blue,
+                         due: calendar.date(byAdding: .day, value: days, to: today))
+        }
+        let section = ReminderSection(list: SmartList.scheduled, items: [item("a", days: -1), item("b", days: 0), item("c", days: 1)])
+        let titles = section.entries(foldedParents: [], foldedSections: []).compactMap { entry -> String? in
+            if case .day(let title, _, _) = entry { title } else { nil }
+        }
+        #expect(titles == ["Overdue", "Today", "Tomorrow"])
     }
 
     @Test func nextUpNeverRepeatsATitle() {

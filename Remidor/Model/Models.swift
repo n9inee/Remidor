@@ -56,7 +56,7 @@ struct ReminderSection: Identifiable {
     var sections: [ReminderKit.ListSection] = []
     var id: String { list.id }
     /// How many of its reminders are late.
-    var overdueCount: Int { items.filter(isOverdue).count }
+    var overdueCount: Int { items.filter { isOverdue($0) }.count }
 }
 
 /// Built-in lists that EventKit doesn't expose; Remidor recreates them from due dates.

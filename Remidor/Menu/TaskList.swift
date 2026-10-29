@@ -96,16 +96,16 @@ struct TaskList: View {
                 withAnimation(Self.quick) { renamingList = nil }
             }, onCancel: { withAnimation(Self.quick) { renamingList = nil } })
         } else {
-            SectionHeader(section: section, collapsed: collapsed, overdue: section.overdueCount,
-                          onReschedule: { model.rescheduleOverdue(in: section.items, toDay: $0) }, onToggle: {
+            SectionHeader(section: section, collapsed: collapsed, overdue: lateOutsideTitle(section),
+                          onReschedule: { model.rescheduleOverdue(in: section.items, toDay: $0) }, choices: model.rescheduleChoices, onToggle: {
                 if !justDragged { withAnimation(.snappy(duration: 0.4)) { model.toggleCollapsed(section.list) } }
             }, onAddReminder: SmartList.canAdd(to: section.list) ? { withAnimation(Self.quick) { addingTaskTo = section.id } } : nil,
                onAddSection: section.list.isSmart ? nil : { withAnimation(Self.quick) { addingSectionTo = section.id } },
                onRename: section.list.isSmart ? nil : { withAnimation(Self.quick) { renamingList = section.id } },
                onDelete: section.list.isSmart ? nil : { withAnimation(Self.quick) { deletingList = section.id } })
             .contextMenu {
-                let late = section.overdueCount
-                RescheduleButtons(overdue: late) { model.rescheduleOverdue(in: section.items, toDay: $0) }
+                let late = lateOutsideTitle(section)
+                RescheduleButtons(overdue: late, choices: model.rescheduleChoices) { model.rescheduleOverdue(in: section.items, toDay: $0) }
                 if late > 0, SmartList.canAdd(to: section.list) || !SmartList.sortsByTime(section.list) { Divider() }
                 if SmartList.canAdd(to: section.list) {
                     Button("Add Reminder…") { withAnimation(Self.quick) { addingTaskTo = section.id } }
@@ -182,7 +182,9 @@ struct TaskList: View {
                         }
                     }
                 case .day(let title, let late, _):
-                    SubheadingRow(title: title, count: 0, folded: false, onToggle: {}, foldable: false, tint: late ? .red : nil)
+                    SubheadingRow(title: title, count: 0, folded: false, onToggle: {}, foldable: false, tint: late ? .red : nil,
+                                  onReschedule: late ? { model.rescheduleOverdue(in: section.items, toDay: $0) } : nil,
+                                  choices: model.rescheduleChoices)
                 case .noSection:
                     SubheadingRow(title: "No Section", count: 0, folded: false, onToggle: {}, foldable: false)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.headings[section.id + "|none"] = $0 }
@@ -201,6 +203,12 @@ struct TaskList: View {
             }
         }
     
+    }
+
+    /// How many late reminders a list has that its own "Overdue" title doesn't cover. Lists that group by time
+    /// have the title, with its own Reschedule button.
+    private func lateOutsideTitle(_ section: ReminderSection) -> Int {
+        SmartList.sortsByTime(section.list) ? 0 : section.overdueCount
     }
 
     // MARK: Carrying
@@ -568,6 +576,9 @@ private struct SubheadingRow: View {
     var foldable = true
     /// Colors the title, like "Overdue" in red.
     var tint: Color?
+    /// Only on "Overdue": moves everything late to another day.
+    var onReschedule: ((Date) -> Void)?
+    var choices: [(title: String, day: Date)] = []
 
     @State private var hovering = false
 
@@ -576,17 +587,36 @@ private struct SubheadingRow: View {
     }
 
     private var label: some View {
-        Text(title).font(.callout.weight(.semibold)).lineLimit(1)
-            .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
-            .padding(.horizontal, 6).padding(.vertical, 3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 6)
-            .accessibilityAddTraits(.isHeader)
+        HStack(spacing: 6) {
+            Text(title).font(.callout.weight(.semibold)).lineLimit(1)
+                .foregroundStyle(tint.map(AnyShapeStyle.init) ?? AnyShapeStyle(.secondary))
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 0)
+            if let onReschedule {
+                Menu {
+                    ForEach(choices, id: \.title) { choice in
+                        Button(choice.title) { onReschedule(choice.day) }
+                    }
+                } label: {
+                    Text("Reschedule").font(.caption.weight(.medium))
+                }
+                .menuStyle(.button).buttonStyle(HoverButtonStyle(horizontal: 6, vertical: 2, radius: 5)).menuIndicator(.hidden)
+                .fixedSize()
+                .help("Move everything that is overdue to another day")
+            }
+        }
+        .padding(.horizontal, 6).padding(.vertical, 3)
+        .padding(.top, 6)
     }
 
     private var button: some View {
         Button(action: onToggle) {
             HStack(spacing: 6) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .frame(width: 10)
+                    .rotationEffect(.degrees(folded ? -90 : 0))
+                    .opacity(hovering || folded ? 1 : 0.5)
                 Text(title).font(.callout.weight(.semibold)).lineLimit(1)
                 if folded {
                     Text("\(count)")
@@ -595,10 +625,6 @@ private struct SubheadingRow: View {
                         .background(Capsule().fill(Color.primary.opacity(0.08)))
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .bold))
-                    .rotationEffect(.degrees(folded ? -90 : 0))
-                    .opacity(hovering || folded ? 1 : 0.5)
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 6).padding(.vertical, 3)
@@ -626,14 +652,15 @@ private struct SubheadingRow: View {
 /// "Move 3 Overdue to Today" and to Tomorrow, for a list that has late reminders.
 private struct RescheduleButtons: View {
     let overdue: Int
+    let choices: [(title: String, day: Date)]
     let action: (Date) -> Void
 
     var body: some View {
         if overdue > 0 {
-            let late = overdue == 1 ? "1 Overdue" : "\(overdue) Overdue"
-            Button("Move \(late) to Today") { action(Date()) }
-            Button("Move \(late) to Tomorrow") {
-                action(Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+            Menu("Reschedule Overdue") {
+                ForEach(choices, id: \.title) { choice in
+                    Button(choice.title) { action(choice.day) }
+                }
             }
         }
     }
@@ -645,6 +672,7 @@ private struct SectionHeader: View {
     let collapsed: Bool
     var overdue = 0
     var onReschedule: (Date) -> Void = { _ in }
+    var choices: [(title: String, day: Date)] = []
     let onToggle: () -> Void
     var onAddReminder: (() -> Void)?
     var onAddSection: (() -> Void)?
@@ -656,6 +684,12 @@ private struct SectionHeader: View {
     var body: some View {
         Button(action: onToggle) {
             HStack(spacing: 6) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10)
+                    .rotationEffect(.degrees(collapsed ? -90 : 0))
+                    .opacity(hovering || collapsed ? 1 : 0.5)
                 Image(systemName: section.list.symbol)
                     .foregroundStyle(section.list.color)
                 Text(section.list.title).font(.subheadline.weight(.semibold))
@@ -666,24 +700,29 @@ private struct SectionHeader: View {
                     .background(Capsule().fill(Color.primary.opacity(0.08)))
                     .contentTransition(.numericText())
                 Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(collapsed ? -90 : 0))
-                    .opacity(hovering || collapsed ? 1 : 0.5)
             }
             .padding(.horizontal, 6).padding(.vertical, 3)
             .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(hovering ? 0.06 : 0)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // A + next to the chevron, only while the pointer is over the list's name.
+        // A + and a ⋯ menu, only while the pointer is over the list's name.
         .overlay(alignment: .trailing) {
             if hovering, onAddReminder != nil || onAddSection != nil || onRename != nil || overdue > 0 {
                 HStack(spacing: 0) {
+                    if let onAddReminder {
+                        Button(action: onAddReminder) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .bold))
+                                .frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(HoverButtonStyle(radius: 5))
+                        .help("Add a reminder to \(section.list.title)")
+                        .accessibilityLabel("Add a reminder to \(section.list.title)")
+                    }
                     if onAddSection != nil || onRename != nil || onDelete != nil || overdue > 0 {
                         Menu {
-                            RescheduleButtons(overdue: overdue, action: onReschedule)
+                            RescheduleButtons(overdue: overdue, choices: choices, action: onReschedule)
                             if overdue > 0, onAddSection != nil || onRename != nil || onDelete != nil { Divider() }
                             if let onAddSection { Button("New Section…", action: onAddSection) }
                             if let onRename { Button("Rename List…", action: onRename) }
@@ -694,29 +733,15 @@ private struct SectionHeader: View {
                         } label: {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.secondary)
                                 .frame(width: 20, height: 20)
-                                .contentShape(Rectangle())
                         }
-                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+                        .menuStyle(.button).buttonStyle(HoverButtonStyle(radius: 5)).menuIndicator(.hidden)
                         .fixedSize()
                         .help("More for \(section.list.title)")
                         .accessibilityLabel("More for \(section.list.title)")
                     }
-                    if let onAddReminder {
-                        Button(action: onAddReminder) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 20, height: 20)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Add a reminder to \(section.list.title)")
-                        .accessibilityLabel("Add a reminder to \(section.list.title)")
-                    }
                 }
-                .padding(.trailing, 24)
+                .padding(.trailing, 6)
                 .transition(.opacity)
             }
         }
@@ -762,14 +787,11 @@ struct SortChoices: View {
     let choose: (SortOrder?) -> Void
 
     var body: some View {
-        Button { choose(nil) } label: {
-            if current == nil { Label("\(inheritedTitle) (\(inherited.label))", systemImage: "checkmark") } else { Text("\(inheritedTitle) (\(inherited.label))") }
-        }
+        CheckedItem(title: "\(inheritedTitle) (\(inherited.label))", checked: current == nil) { choose(nil) }
         Divider()
+        // The order in force is ticked even when it is only inherited, so it is clear what the list is using.
         ForEach(SortOrder.allCases) { order in
-            Button { choose(order) } label: {
-                if current == order { Label(order.label, systemImage: "checkmark") } else { Text(order.label) }
-            }
+            CheckedItem(title: order.label, checked: (current ?? inherited) == order) { choose(order) }
         }
     }
 }

@@ -101,7 +101,7 @@ enum ListEntry: Identifiable {
     /// The title over the reminders that are in no section, which come after all the sections.
     case noSection
     case item(ReminderItem)
-    /// A day's title over its reminders in Next Up. A label only: it can't be picked, folded or dragged.
+    /// A title over a group of reminders in Today, Next Up and Scheduled: "Overdue", a part of the day or a day. A label only: it can't be picked, folded or dragged.
     case day(title: String, isOverdue: Bool, key: String)
 
     var id: String {
@@ -120,7 +120,7 @@ extension ReminderSection {
     /// without sections are plain reminders.
     func entries(foldedParents: Set<String>, foldedSections: Set<String>, now: Date = Date()) -> [ListEntry] {
         let visible = items.hidingFoldedSubtasks(foldedParents)
-        if list.id == SmartList.nextUp.id { return dayEntries(of: visible, now: now) }
+        if SmartList.sortsByTime(list) { return timeEntries(of: visible, now: now) }
         guard !list.isSmart, !sections.isEmpty else { return visible.map(ListEntry.item) }
         let known = Set(sections.map(\.id))
         var result: [ListEntry] = []
@@ -138,30 +138,48 @@ extension ReminderSection {
         return result
     }
 
-    /// Next Up: everything late under "Overdue", then a title for each day. A sub-task stays under its parent.
-    /// A reminder goes under the title it belongs to wherever it sits in the list, so a title never shows twice.
-    private func dayEntries(of visible: [ReminderItem], now: Date) -> [ListEntry] {
+    /// Today, Next Up and Scheduled: everything late under "Overdue", then a title for each part of the day (Today) or
+    /// each day. A sub-task stays under its parent. A reminder goes under the title it belongs to wherever it sits in
+    /// the list, so a title never shows twice.
+    private func timeEntries(of visible: [ReminderItem], now: Date) -> [ListEntry] {
         let calendar = Calendar.current
+        let byPartOfDay = list.id == SmartList.today.id
         var groups: [(key: String, title: String, late: Bool, items: [ReminderItem])] = []
         var current: Int?
         for item in visible {
             if item.depth == 0 || current == nil, let due = item.due {
-                let late = isOverdue(item)
+                let late = isOverdue(item, now: now)
                 let day = calendar.startOfDay(for: due)
-                let key = late ? "overdue" : String(day.timeIntervalSinceReferenceDate)
+                let (key, title): (String, String) = if late {
+                    ("overdue", "Overdue")
+                } else if byPartOfDay {
+                    partOfDay(of: item)
+                } else {
+                    (String(day.timeIntervalSinceReferenceDate), dayHeading(for: day, now: now))
+                }
                 if let existing = groups.firstIndex(where: { $0.key == key }) {
                     current = existing
                 } else {
-                    groups.append((key, late ? "Overdue" : dayHeading(for: day, now: now), late, []))
+                    groups.append((key, title, late, []))
                     current = groups.count - 1
                 }
             }
             if let current { groups[current].items.append(item) }
         }
-        // What is late always comes first, the days after it in the order they came.
+        // What is late always comes first, the others in the order they came.
         let ordered = groups.filter(\.late) + groups.filter { !$0.late }
         return ordered.flatMap { group in
             [ListEntry.day(title: group.title, isOverdue: group.late, key: group.key)] + group.items.map(ListEntry.item)
+        }
+    }
+
+    /// Where a reminder due today sits in the day, as in the Reminders app.
+    private func partOfDay(of item: ReminderItem) -> (key: String, title: String) {
+        guard item.dueHasTime, let due = item.due else { return ("allday", "All-Day") }
+        switch Calendar.current.component(.hour, from: due) {
+        case ..<12: return ("morning", "Morning")
+        case ..<17: return ("afternoon", "Afternoon")
+        default: return ("tonight", "Tonight")
         }
     }
 }

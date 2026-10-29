@@ -152,6 +152,7 @@ private struct Chip: View {
     let label: String
     let active: Bool
     var tint: Color = .accentColor
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -161,7 +162,9 @@ private struct Chip: View {
         .font(.caption)
         .foregroundStyle(active ? tint : .secondary)
         .padding(.horizontal, 8).padding(.vertical, 3)
-        .background(Capsule().fill(active ? tint.opacity(0.15) : Color.primary.opacity(0.08)))
+        .background(Capsule().fill(active ? tint.opacity(hovering ? 0.25 : 0.15) : Color.primary.opacity(hovering ? 0.16 : 0.08)))
+        .onHover { hovering = $0 }
         .animation(.snappy(duration: 0.4), value: active)
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }

@@ -99,7 +99,7 @@ struct MenuView: View {
                 } label: {
                     Label("Recent", systemImage: "clock.arrow.circlepath").font(.callout)
                 }
-                .menuStyle(.button).buttonStyle(FooterButtonStyle()).menuIndicator(.hidden)
+                .menuStyle(.button).buttonStyle(HoverButtonStyle(horizontal: 8, vertical: 3)).menuIndicator(.hidden)
                 .transition(.opacity)
                 Spacer()
             }
@@ -119,7 +119,7 @@ private struct FooterButton: View {
             Label(title, systemImage: icon).font(.callout)
                 .labelStyle(FooterLabelStyle(iconOnly: iconOnly))
         }
-        .buttonStyle(FooterButtonStyle())
+        .buttonStyle(HoverButtonStyle(horizontal: 8, vertical: 3))
         .help(title)
     }
 }
@@ -129,15 +129,5 @@ private struct FooterLabelStyle: LabelStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         if iconOnly { configuration.icon } else { Label(configuration) }
-    }
-}
-
-private struct FooterButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(configuration.isPressed ? 0.14 : 0)))
-            .foregroundStyle(.secondary)
-            .contentShape(Rectangle())
     }
 }

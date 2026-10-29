@@ -72,6 +72,12 @@ final class TaskModel {
         didSet { UserDefaults.standard.set(weekendStart, forKey: DefaultsKey.weekendStart) }
     }
 
+    /// Where late reminders can be moved to, for the Reschedule menus.
+    var rescheduleChoices: [(title: String, day: Date)] {
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        return [("Today", Date()), ("Tomorrow", tomorrow), ("Weekend", weekendDay), ("Next Week", nextWeekDay)]
+    }
+
     var nextWeekDay: Date { ReminderEditing.nextWeekStart(weekStart) }
     var weekendDay: Date { ReminderEditing.weekend(startingOn: weekendStart) }
 
@@ -335,7 +341,7 @@ final class TaskModel {
     /// Everything that is late, then the next few reminders that aren't.
     private func nextUpItems(from items: [ReminderItem]) -> [ReminderItem] {
         let dated = items.filter { $0.due != nil }.sortedByDueTime()
-        return dated.filter(isOverdue) + dated.filter { !isOverdue($0) }.prefix(SmartList.nextUpCount)
+        return dated.filter { isOverdue($0) } + dated.filter { !isOverdue($0) }.prefix(SmartList.nextUpCount)
     }
 
     private func makeSections(from items: [ReminderItem], listSections: [String: [ReminderKit.ListSection]]) -> [ReminderSection] {
@@ -776,7 +782,7 @@ final class TaskModel {
     /// Moves every late reminder among `items` to another day. One that has a time keeps it, unless that
     /// time has already gone by on the new day, in which case it only keeps the day.
     func rescheduleOverdue(in items: [ReminderItem], toDay day: Date) {
-        let late = items.filter(isOverdue)
+        let late = items.filter { isOverdue($0) }
         guard !late.isEmpty else { return }
         var failed = 0
         for item in late {

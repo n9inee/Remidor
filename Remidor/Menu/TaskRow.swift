@@ -63,6 +63,11 @@ struct TaskRow: View {
         .animation(.snappy(duration: 0.3), value: hovering)
     }
 
+    /// Whether the reminder is due on that day, which ticks the matching choice in the Date menu.
+    private func isDue(on day: Date) -> Bool {
+        item.due.map { Calendar.current.isDate($0, inSameDayAs: day) } ?? false
+    }
+
     @ViewBuilder private var contextMenu: some View {
         Button("Open") { model.openInReminders(item) }
         Button("Edit") { editing = true }
@@ -81,10 +86,11 @@ struct TaskRow: View {
         }
         Divider()
         Menu("Date") {
-            Button("Today") { model.setDay(item, to: Date()) }
-            Button("Tomorrow") { model.setDay(item, to: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()) }
-            Button("Weekend") { model.setDay(item, to: model.weekendDay) }
-            Button("Next Week") { model.setDay(item, to: model.nextWeekDay) }
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            CheckedItem(title: "Today", checked: isDue(on: Date())) { model.setDay(item, to: Date()) }
+            CheckedItem(title: "Tomorrow", checked: isDue(on: tomorrow)) { model.setDay(item, to: tomorrow) }
+            CheckedItem(title: "Weekend", checked: isDue(on: model.weekendDay)) { model.setDay(item, to: model.weekendDay) }
+            CheckedItem(title: "Next Week", checked: isDue(on: model.nextWeekDay)) { model.setDay(item, to: model.nextWeekDay) }
             if item.due != nil {
                 Divider()
                 Button("Remove Date") { model.setDue(item, to: nil, hasTime: false) }
@@ -92,17 +98,13 @@ struct TaskRow: View {
         }
         Menu("Priority") {
             ForEach([("None", 0), ("Low", 9), ("Medium", 5), ("High", 1)], id: \.1) { name, value in
-                Button { model.setPriority(item, to: value) } label: {
-                    if item.priority == value { Label(name, systemImage: "checkmark") } else { Text(name) }
-                }
+                CheckedItem(title: name, checked: item.priority == value) { model.setPriority(item, to: value) }
             }
         }
         Button(item.isFlagged ? "Remove Flag" : "Flag") { model.setFlag(item, to: !item.isFlagged) }
         Menu("List") {
             ForEach(model.lists.filter { !$0.isSmart }) { list in
-                Button { model.move(item, toListID: list.id) } label: {
-                    if list.id == item.listID { Label(list.title, systemImage: "checkmark") } else { Text(list.title) }
-                }
+                CheckedItem(title: list.title, checked: list.id == item.listID) { model.move(item, toListID: list.id) }
             }
         }
         Divider()

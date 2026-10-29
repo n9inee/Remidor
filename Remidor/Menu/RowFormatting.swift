@@ -98,9 +98,9 @@ func dayHeading(for date: Date, now: Date = Date()) -> String {
 }
 
 /// A reminder with a time is overdue once that time has passed; a date-only one once its day has.
-func isOverdue(_ item: ReminderItem) -> Bool {
+func isOverdue(_ item: ReminderItem, now: Date = Date()) -> Bool {
     guard let due = item.due else { return false }
-    if item.dueHasTime { return due < Date() }
+    if item.dueHasTime { return due < now }
     let calendar = Calendar.current
-    return calendar.startOfDay(for: due) < calendar.startOfDay(for: Date())
+    return calendar.startOfDay(for: due) < calendar.startOfDay(for: now)
 }
