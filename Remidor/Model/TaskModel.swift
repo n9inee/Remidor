@@ -344,10 +344,9 @@ final class TaskModel {
         }
     }
 
-    /// Everything that is late, then the next few reminders that aren't.
+    /// Everything that is late, then whole days of what is coming.
     private func nextUpItems(from items: [ReminderItem]) -> [ReminderItem] {
-        let dated = items.filter { $0.due != nil }.sortedByDueTime()
-        return dated.filter { isOverdue($0) } + dated.filter { !isOverdue($0) }.prefix(SmartList.nextUpCount)
+        items.nextUp(minimum: SmartList.nextUpCount)
     }
 
     private func makeSections(from items: [ReminderItem], listSections: [String: [ReminderKit.ListSection]]) -> [ReminderSection] {

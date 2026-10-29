@@ -70,7 +70,7 @@ enum SmartList {
     static let all = ReminderList(id: "smart.all", title: "All", color: .gray, isSmart: true)
     static let allLists = [today, nextUp, scheduled, flagged, all]
 
-    /// How many reminders that aren't late yet Next Up shows after the late ones.
+    /// The fewest reminders that aren't late yet Next Up shows after the late ones, rounded up to whole days.
     static let nextUpCount = 5
 
     /// Whether a reminder can be added straight to the list. Scheduled and Next Up can't, since they only show what has a date.

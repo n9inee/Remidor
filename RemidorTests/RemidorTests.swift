@@ -539,6 +539,22 @@ struct OverdueTests {
         #expect(titles == ["Overdue", "Today", "Tomorrow"])
     }
 
+    @Test func nextUpFinishesTheDaysItShows() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        func item(_ id: String, days: Int) -> ReminderItem {
+            ReminderItem(id: id, title: id, listID: "l", listTitle: "L", listColor: .blue,
+                         due: calendar.date(byAdding: .day, value: days, to: today))
+        }
+        let items = [item("late", days: -1), item("a", days: 1), item("b", days: 1), item("c", days: 1),
+                     item("d", days: 2), item("e", days: 2), item("f", days: 2), item("g", days: 3), item("h", days: 3)]
+        // Five is reached part-way through day 2, so all of day 2 shows and day 3 doesn't.
+        let ids = items.nextUp(minimum: 5, now: Date()).map(\.id)
+        #expect(ids == ["late", "a", "b", "c", "d", "e", "f"])
+        #expect(items.nextUp(minimum: 100).count == items.count)
+        #expect(items.nextUp(minimum: 0).map(\.id) == ["late"])
+    }
+
     @Test func nextUpNeverRepeatsATitle() {
         let calendar = Calendar.current
         let now = Date()

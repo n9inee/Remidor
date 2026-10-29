@@ -28,6 +28,20 @@ extension Array where Element == ReminderItem {
         }
     }
 
+    /// Everything late, then whole days of what is still to come: days are added until `minimum` reminders
+    /// are showing, and a day is never cut short.
+    func nextUp(minimum: Int, now: Date = Date()) -> [ReminderItem] {
+        let dated = filter { $0.due != nil }.sortedByDueTime()
+        let late = dated.filter { isOverdue($0, now: now) }
+        let coming = dated.filter { !isOverdue($0, now: now) }
+        let calendar = Calendar.current
+        guard minimum > 0 else { return late }
+        guard coming.count > minimum, let last = coming[minimum - 1].due else { return late + coming }
+        // The last reminder that fits sets the final day; everything on that day comes along.
+        let end = calendar.startOfDay(for: last)
+        return late + coming.prefix { calendar.startOfDay(for: $0.due ?? .distantFuture) <= end }
+    }
+
     /// Groups the items by the section they sit in, keeping the order inside each section. Items that
     /// aren't in a section come last.
     func groupedBySection() -> [ReminderItem] {
