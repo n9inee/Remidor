@@ -34,6 +34,41 @@ struct ReminderItem: Identifiable, Equatable {
 
     /// Lower sorts first; reminders without a priority come last.
     var priorityRank: Int { priority == 0 ? 10 : priority }
+
+    /// High (1), medium (5), low (9) or none (0).
+    var priorityBucket: Int { priorityLevel(of: priority) }
+}
+
+/// Reminders counts 1-4 as high, 5 as medium and 6-9 as low, and only ever writes 1, 5 and 9. Other apps can
+/// write the values in between, so this maps any of them to the level it counts as: 1, 5, 9 or 0 for none.
+func priorityLevel(of priority: Int) -> Int {
+    switch priority {
+    case 1...4: 1
+    case 5: 5
+    case 6...9: 9
+    default: 0
+    }
+}
+
+/// How a typed date such as 5.10. is read: day first (5 October) or month first (10 May).
+enum DateOrder: String, CaseIterable, Identifiable {
+    case dayFirst, monthFirst
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .dayFirst: "Day first (31.12.2026)"
+        case .monthFirst: "Month first (12/31/2026)"
+        }
+    }
+
+    /// The order the Mac's region writes dates in.
+    static var systemDefault: DateOrder {
+        let template = DateFormatter.dateFormat(fromTemplate: "yMd", options: 0, locale: .current) ?? "M/d/y"
+        if let day = template.firstIndex(of: "d"), let month = template.firstIndex(of: "M"), day < month { return .dayFirst }
+        return .monthFirst
+    }
 }
 
 /// A list shown in the dropdown: one of the Reminders lists or a built-in smart list.

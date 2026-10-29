@@ -67,6 +67,67 @@ struct QuickAddParserTests {
         #expect(QuickAddParser.parse("call tmrw at 8", listNames: lists).hasTime)
     }
 
+    @Test func typedNumbersFollowTheChosenDateOrder() throws {
+        let calendar = Calendar.current
+        func parts(_ text: String, _ order: DateOrder) throws -> (day: Int, month: Int, year: Int) {
+            let due = try #require(QuickAddParser.parse(text, listNames: lists, dateOrder: order).due, "\(text)")
+            let c = calendar.dateComponents([.day, .month, .year], from: due)
+            return (c.day ?? 0, c.month ?? 0, c.year ?? 0)
+        }
+        #expect(try parts("pay 5.10.2031", .dayFirst) == (5, 10, 2031))
+        #expect(try parts("pay 5.10.2031", .monthFirst) == (10, 5, 2031))
+        #expect(try parts("pay 5/10/2031", .dayFirst) == (5, 10, 2031))
+        #expect(try parts("pay 5/10/2031", .monthFirst) == (10, 5, 2031))
+        #expect(try parts("pay 2031-10-05", .dayFirst) == (5, 10, 2031))
+        #expect(try parts("pay 25.12.31", .monthFirst) == (25, 12, 2031))   // only works as day first
+        let result = QuickAddParser.parse("pay rent 5.10.2031 at 5pm", listNames: lists)
+        #expect(result.title == "pay rent")
+        #expect(result.hasTime && hour(result.due) == 17)
+        // A number with a dot but no closing dot is not a date.
+        #expect(QuickAddParser.parse("buy 2.5 kg flour", listNames: lists).due == nil)
+        #expect(QuickAddParser.parse("pay 31.2.2031", listNames: lists).due == nil)
+    }
+
+    @Test func datesWithoutAYearAreNeverInThePast() throws {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+        let numbers = calendar.dateComponents([.day, .month], from: yesterday)
+        let typed = "\(numbers.day ?? 1).\(numbers.month ?? 1)."
+        #expect(try #require(QuickAddParser.parse("pay " + typed, listNames: lists).due) >= today)
+        let words = yesterday.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "en_US")))
+        #expect(try #require(QuickAddParser.parse("pay " + words, listNames: lists).due) >= today)
+    }
+
+    @Test func aTimeThatHasPassedMeansTomorrow() throws {
+        // Midnight has always gone by, whatever the time is now.
+        let due = try #require(QuickAddParser.parse("call at 12am", listNames: lists).due)
+        #expect(due > Date())
+        #expect(Calendar.current.isDateInTomorrow(due))
+        // Unless the day is named.
+        let named = try #require(QuickAddParser.parse("call today at 12am", listNames: lists).due)
+        #expect(Calendar.current.isDateInToday(named))
+    }
+
+    @Test func aTimeOnItsOwnIsRecognised() throws {
+        let result = QuickAddParser.parse("call mom at 8", listNames: lists)
+        #expect(result.title == "call mom")
+        #expect(result.hasTime && hour(result.due) == 8)
+        #expect(hour(QuickAddParser.parse("lunch at 12", listNames: lists).due) == 12)
+        #expect(hour(QuickAddParser.parse("lunch at 4:30pm", listNames: lists).due) == 16)
+        #expect(QuickAddParser.parse("meet at 3rd street", listNames: lists).due == nil)
+    }
+
+    @Test func wordsInFrontOfADateStayInTheTitle() throws {
+        let noon = QuickAddParser.parse("finish by noon", listNames: lists)
+        #expect(noon.title == "finish")
+        #expect(hour(noon.due) == 12)
+        let friday = QuickAddParser.parse("finish by friday", listNames: lists)
+        #expect(friday.title == "finish")
+        #expect(friday.due.map { Calendar.current.component(.weekday, from: $0) } == 6)
+        #expect(hour(QuickAddParser.parse("send it tomorrow noon", listNames: lists).due) == 12)
+    }
+
     @Test func relativeDates() {
         let result = QuickAddParser.parse("stretch in 20 mins", listNames: lists)
         #expect(result.title == "stretch")
@@ -553,6 +614,42 @@ struct OverdueTests {
         #expect(ids == ["late", "a", "b", "c", "d", "e", "f"])
         #expect(items.nextUp(minimum: 100).count == items.count)
         #expect(items.nextUp(minimum: 0).map(\.id) == ["late"])
+    }
+
+    @Test func flaggedAndAllGatherWhatIsLateUnderOverdue() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        func item(_ id: String, days: Int?, depth: Int = 0) -> ReminderItem {
+            var item = ReminderItem(id: id, title: id, listID: "l", listTitle: "L", listColor: .blue,
+                                    due: days.flatMap { calendar.date(byAdding: .day, value: $0, to: today) })
+            item.depth = depth
+            return item
+        }
+        let section = ReminderSection(list: SmartList.flagged, items: [item("a", days: 1), item("c", days: nil, depth: 1), item("b", days: -2), item("d", days: nil)])
+        let ids = section.entries(foldedParents: [], foldedSections: []).map { entry -> String in
+            switch entry {
+            case .day(let title, _, _): title
+            case .item(let item): item.id
+            default: "?"
+            }
+        }
+        // The sub-task "c" stays with its parent "a", not with the late "b".
+        #expect(ids == ["Overdue", "b", "Other", "a", "c", "d"])
+        let none = ReminderSection(list: SmartList.flagged, items: [item("a", days: 1)])
+        #expect(none.entries(foldedParents: [], foldedSections: []).count == 1)
+    }
+
+    @Test func prioritiesBetweenTheUsualOnesCountAsTheirLevel() {
+        #expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(priorityLevel(of:)) == [0, 1, 1, 1, 1, 5, 9, 9, 9, 9])
+    }
+
+    @Test func aFirstTimeIsNeverMidnight() throws {
+        let calendar = Calendar.current
+        let now = Date()
+        let tomorrow = try #require(calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)))
+        #expect(calendar.component(.hour, from: ReminderEditing.withDefaultTime(on: tomorrow, now: now)) == 9)
+        let later = ReminderEditing.withDefaultTime(on: calendar.startOfDay(for: now), now: now)
+        #expect(calendar.component(.hour, from: later) == min(calendar.component(.hour, from: now) + 1, 23))
     }
 
     @Test func nextUpNeverRepeatsATitle() {

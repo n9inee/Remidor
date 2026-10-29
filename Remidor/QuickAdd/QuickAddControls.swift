@@ -32,13 +32,13 @@ struct QuickAddControls: View {
             .buttonStyle(.plain)
 
             Menu {
-                Button("Never") { draft.setRecurrence(nil) }
+                CheckedItem(title: "Never", checked: draft.recurrence == nil) { draft.setRecurrence(nil) }
                 Divider()
-                Button("Daily") { draft.setRecurrence(Recurrence(frequency: .daily)) }
-                Button("Weekdays") { draft.setRecurrence(.weekdaysOnly) }
-                Button("Weekly") { draft.setRecurrence(Recurrence(frequency: .weekly)) }
-                Button("Monthly") { draft.setRecurrence(Recurrence(frequency: .monthly)) }
-                Button("Yearly") { draft.setRecurrence(Recurrence(frequency: .yearly)) }
+                repeatChoice("Daily", Recurrence(frequency: .daily))
+                repeatChoice("Weekdays", .weekdaysOnly)
+                repeatChoice("Weekly", Recurrence(frequency: .weekly))
+                repeatChoice("Monthly", Recurrence(frequency: .monthly))
+                repeatChoice("Yearly", Recurrence(frequency: .yearly))
             } label: {
                 Chip(icon: "repeat", label: draft.recurrence?.shortLabel ?? "", active: draft.recurrence != nil)
             }
@@ -46,12 +46,12 @@ struct QuickAddControls: View {
             .help("Repeat. You can also type \"every sunday\" or \"every 2 weeks\".")
 
             Menu {
-                Button("None") { draft.setPriority(nil) }
-                Button("Low  !") { draft.setPriority(9) }
-                Button("Medium  !!") { draft.setPriority(5) }
-                Button("High  !!!") { draft.setPriority(1) }
+                priorityChoice("None", nil)
+                priorityChoice("Low  !", 9)
+                priorityChoice("Medium  !!", 5)
+                priorityChoice("High  !!!", 1)
             } label: {
-                Chip(icon: draft.priority == nil ? "exclamationmark.2" : nil, label: priorityLabel, active: draft.priority != nil)
+                Chip(icon: priorityLabel.isEmpty ? "exclamationmark.2" : nil, label: priorityLabel, active: !priorityLabel.isEmpty)
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
             .help("Priority")
@@ -66,7 +66,7 @@ struct QuickAddControls: View {
             if draft.lockedListID == nil {
             Menu {
                 ForEach(draft.realLists) { list in
-                    Button(list.title) { draft.setList(list.id) }
+                    CheckedItem(title: list.title, checked: list.id == draft.list?.id) { draft.setList(list.id) }
                 }
             } label: {
                 HStack(spacing: 4) {
@@ -127,7 +127,7 @@ struct QuickAddControls: View {
     }
 
     private func quickDate(_ title: String, day: Date) -> some View {
-        Button(title) { draft.setDate(Calendar.current.startOfDay(for: day), hasTime: false) }
+        Button(title) { draft.setDay(day) }
             .controlSize(.small)
     }
 
@@ -136,8 +136,17 @@ struct QuickAddControls: View {
         return describeDue(due, hasTime: draft.hasTime, includeWeekday: false)
     }
 
+    private func repeatChoice(_ title: String, _ recurrence: Recurrence) -> some View {
+        CheckedItem(title: title, checked: draft.recurrence == recurrence) { draft.setRecurrence(recurrence) }
+    }
+
+    /// A priority choice, ticked when the reminder has that level (whatever value in between another app wrote).
+    private func priorityChoice(_ title: String, _ level: Int?) -> some View {
+        CheckedItem(title: title, checked: (draft.priority.map(priorityLevel(of:)) ?? 0) == (level ?? 0)) { draft.setPriority(level) }
+    }
+
     private var priorityLabel: String {
-        switch draft.priority {
+        switch draft.priority.map(priorityLevel(of:)) {
         case 1: "!!!"
         case 5: "!!"
         case 9: "!"

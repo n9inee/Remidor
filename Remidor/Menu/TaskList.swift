@@ -151,7 +151,7 @@ struct TaskList: View {
         if !collapsed {
             let entries = section.entries(foldedParents: model.collapsedParentIDs, foldedSections: model.collapsedSectionIDs)
             if entries.isEmpty {
-                Text("No reminders")
+                Text(section.list.id == SmartList.today.id ? "Nothing due today" : "No reminders")
                     .font(.callout).foregroundStyle(.tertiary)
                     .padding(.horizontal, 8).padding(.vertical, 5)
             }
@@ -205,10 +205,10 @@ struct TaskList: View {
     
     }
 
-    /// How many late reminders a list has that its own "Overdue" title doesn't cover. Lists that group by time
-    /// have the title, with its own Reschedule button.
+    /// How many late reminders a list has that its own "Overdue" title doesn't cover. The smart lists have the
+    /// title, with its own Reschedule button.
     private func lateOutsideTitle(_ section: ReminderSection) -> Int {
-        SmartList.sortsByTime(section.list) ? 0 : section.overdueCount
+        section.list.isSmart ? 0 : section.overdueCount
     }
 
     // MARK: Carrying

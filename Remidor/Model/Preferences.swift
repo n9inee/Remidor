@@ -21,6 +21,7 @@ enum DefaultsKey {
     static let subtaskSortOrders = "subtaskSortOrders"
     static let weekStart = "weekStartDay"
     static let weekendStart = "weekendStartDay"
+    static let dateOrder = "typedDateOrder"
     static let dropdownMaxHeight = "dropdownMaxHeight"
     static let checkForUpdates = "checkForUpdates"
     static let lastUpdateCheck = "lastUpdateCheck"

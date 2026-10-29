@@ -15,16 +15,16 @@ A menu bar companion for the macOS **Reminders** app. See what's open at a glanc
 ## What it does
 
 - **Dropdown.** Your open reminders, grouped by list, with Today, Scheduled, Flagged and All. Fold lists, list sections and sub-tasks, resize the window, and reorder lists in Settings.
-- **Today, Next Up and Scheduled.** Late reminders sit under a red **Overdue** title with a Reschedule button that moves them to today, tomorrow, the weekend or next week in one go. Today then splits into All-Day, Morning, Afternoon and Tonight, and Next Up and Scheduled get a title for each day. Turn on Next Up in Settings for everything late plus the days coming up, always whole days, until at least five reminders are due. On other lists, ⋯ or right-click → Reschedule Overdue does the same.
+- **Today, Next Up and Scheduled.** Late reminders sit under a red **Overdue** title with a Reschedule button that moves them to today, tomorrow, the weekend or next week in one go. Today then splits into All-Day, Morning, Afternoon and Tonight, and Next Up and Scheduled get a title for each day. Turn on Next Up in Settings for everything late plus the days coming up, always whole days, until at least five reminders are due. Flagged and All gather what is late under Overdue too, and these lists show a reminder's sub-tasks with it, dated or not. On other lists, ⋯ or right-click → Reschedule Overdue does the same.
 - **Lists and sections.** The + in the footer makes a list, and it shows up right away, empty or not. Point at a list's name for a + that adds a reminder and a ⋯ menu that adds a section or renames or deletes the list. On Today, Flagged and All the + adds to your default list, already dated today or flagged. Sections come first, then the reminders that are in none. Drag lists and section headings to reorder them, and drop a reminder on a heading to move it there. Sorting stays inside each section, as in Reminders.
 - **Sorting.** By due date, priority, title, creation date or **Manual**, which is the order you made in the Reminders app. Set it for all lists or for each list on its own (right-click a list's name → Sort By), and "Use for every list" in Settings drops the individual ones. Sub-tasks follow their list's order. Reordering one by hand puts that parent's sub-tasks in manual order, and right-click → Sort Sub-tasks changes it again.
 - **Quick add.** Type "call mom tmrw at 8pm !!!" and the date, priority, list and tags are picked out for you (see below).
 - **Edit in place.** Right-click a reminder → Edit, and change it with everything the quick-add box understands. Add Sub-task, and Add Reminder on a list, a section or a smart list, open that same box in place.
 - **Drag and drop.** Drag a reminder to reorder it (the list switches to manual), onto another reminder to make it a sub-task, onto another list to move it, onto Flagged to flag it, or onto Today to make it due today. Drag a sub-task out the same way to take it out of its parent. Esc cancels a drag, and so does dropping anywhere that doesn't light up.
-- **Focus timer.** Click a task, pick how long, and watch the countdown in the menu bar. Extend it or check the task off when time is up.
+- **Focus timer.** Click a task, pick how long, and watch the countdown in the menu bar. Extend it or check the task off when time is up. A notification tells you too, if you allow them.
 - **Shortcuts.** **⌥Space** opens a floating box from anywhere to add a reminder, or to find one and check it off (**⇧↩**). Tasks are grouped like the dropdown, and an ⓘ opens a task's details. **⇧⌥O** opens the Reminders app. Both can be changed in Settings.
 - **Undo.** Checked something off by accident? Use the banner, **⌘Z**, or the Recent menu. Checking off a parent checks off its sub-tasks, and undo brings them back.
-- **Week and weekend.** The date choices include Weekend and Next Week. They land on the days you pick in Settings, Monday and Saturday unless you change them.
+- **Week and weekend.** The date choices include Weekend and Next Week. They land on the days you pick in Settings, Monday and Saturday unless you change them. Settings also sets whether a typed date like `5.10.` means 5 October or 10 May.
 - **Right-click menu.** Open, Edit, Add Sub-task, Date, Priority, Flag, List, Sort Sub-tasks, Move Up, Move Down, Details and Delete. A list's name has its own: New Section, Rename, Sort By and Delete.
 
 <p align="center">
@@ -37,14 +37,14 @@ Type naturally and Remidor highlights what it understood as you go:
 
 | Type | Examples | Result |
 | --- | --- | --- |
-| Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `in 20 min`, `in two weeks`, `in a month`, `end of month`, `weekend`, `next week` | Due date, with an alert when a time is given |
+| Date and time | `tomorrow 5pm`, `tmrw at 8`, `fri`, `in 20 min`, `in two weeks`, `in a month`, `end of month`, `weekend`, `next week`, `5.10.`, `12/31/2026`, `2026-12-31` | Due date, with an alert when a time is given |
 | Repeat | `every sunday`, `ev day`, `every 2 weeks`, `every mon and thu`, `every other tue`, `every weekday` | Repeats, starting on the next matching day |
 | Priority | `!` `!!` `!!!` | Low, medium, high |
 | Flag | `*` | Flags the reminder |
 | List | `~Work`, `~"My List"` | Adds to that list |
 | Tag | `#errands` | Added to the title and highlighted |
 
-A bare hour after `at` is read as 1–6 → pm, 7–11 → am and 12 → noon, so `at 8` means 8 am. Add `am` or `pm` to be explicit. Every piece also has a button, typing `~`, `#` or `*` suggests lists, tags and the flag, and **Tab** turns what was typed into chips. **Return** adds the reminder. New reminders go to the list you starred in Settings, otherwise to **Inbox**, otherwise to your default list.
+A bare hour after `at` is read as 1–6 → pm, 7–11 → am and 12 → noon, so `at 8` means 8 am. Add `am` or `pm` to be explicit. A time with no day that has already passed today means tomorrow, and a date with no year is the next one to come. Every piece also has a button, typing `~`, `#` or `*` suggests lists, tags and the flag, and **Tab** turns what was typed into chips. **Return** adds the reminder. New reminders go to the list you starred in Settings, otherwise to **Inbox**, otherwise to your default list.
 
 <p align="center">
   <img src="docs/images/quickadd-typed.png" alt="Highlighted date, priority, flag, list and tag in the quick-add box" width="560">
@@ -84,7 +84,7 @@ xcodebuild test -project Remidor.xcodeproj -scheme Remidor -only-testing:Remidor
 
 ## Privacy
 
-Everything stays on your Mac. Remidor reads and changes reminders through Apple's EventKit and has no analytics. The only network request is the optional update check, which asks GitHub for the latest release and sends only the app's name and version. It runs in the App Sandbox with access to Reminders and the network (for that check) as its only extra permissions.
+Everything stays on your Mac. Remidor reads and changes reminders through Apple's EventKit and has no analytics. The only network request is the optional update check, which asks GitHub for the latest release and sends only the app's name and version. It runs in the App Sandbox with access to Reminders and the network (for that check) as its only extra permissions. The first time you start a timer, macOS also asks whether Remidor may show notifications; say no and the sound and the menu bar still tell you when time is up.
 
 ## Good to know
 

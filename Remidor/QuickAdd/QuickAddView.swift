@@ -107,7 +107,7 @@ struct QuickAddView: View {
                 focusTrigger: focusTrigger,
                 onSubmit: submit,
                 onShiftSubmit: completeHighlighted,
-                onTab: { _ = absorbTyped(); return true },
+                onTab: absorbTyped,
                 onMove: move
             )
             .frame(maxWidth: .infinity)

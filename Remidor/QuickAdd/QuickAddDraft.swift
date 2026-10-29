@@ -122,7 +122,7 @@ final class QuickAddDraft {
             parsed = untouched
         } else {
             parsed = QuickAddParser.parse(text, listNames: lockedListID == nil ? realLists.map(\.title) : [],
-                                          weekStart: model.weekStart, weekendStart: model.weekendStart)
+                                          weekStart: model.weekStart, weekendStart: model.weekendStart, dateOrder: model.dateOrder)
         }
     }
 
@@ -219,17 +219,28 @@ final class QuickAddDraft {
     var nextWeekDay: Date { model.nextWeekDay }
     var weekendDay: Date { model.weekendDay }
 
+    /// Moves to another day and keeps the time, if one was chosen.
+    func setDay(_ day: Date) {
+        let moved = ReminderEditing.moving(due, hasTime: hasTime, toDay: day)
+        setDate(moved.date, hasTime: moved.hasTime)
+    }
+
+    /// Turns the time on or off. Turning it on for a day without one starts at a sensible hour, not at midnight.
     func setTime(_ enabled: Bool) {
-        let current = due ?? Date()
+        var current = due ?? Date()
+        if enabled, !hasTime { current = ReminderEditing.withDefaultTime(on: current) }
         takeOverTypedDate()
         pickedDate = current
         pickedHasTime = enabled
     }
 
+    /// Removes the date, and the repeat with it, since a repeat needs a date to start from.
     func clearDate() {
         takeOverTypedDate()
+        removeTokens(of: .recurrence)
         pickedDate = nil
         pickedHasTime = false
+        pickedRecurrence = nil
     }
 
     func setPriority(_ priority: Int?) {

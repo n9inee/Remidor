@@ -86,11 +86,12 @@ struct TaskRow: View {
         }
         Divider()
         Menu("Date") {
-            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-            CheckedItem(title: "Today", checked: isDue(on: Date())) { model.setDay(item, to: Date()) }
-            CheckedItem(title: "Tomorrow", checked: isDue(on: tomorrow)) { model.setDay(item, to: tomorrow) }
-            CheckedItem(title: "Weekend", checked: isDue(on: model.weekendDay)) { model.setDay(item, to: model.weekendDay) }
-            CheckedItem(title: "Next Week", checked: isDue(on: model.nextWeekDay)) { model.setDay(item, to: model.nextWeekDay) }
+            // One tick only: the first of these that matches, so Today wins when the weekend starts today.
+            let choices = model.rescheduleChoices
+            let current = choices.first { isDue(on: $0.day) }?.title
+            ForEach(choices, id: \.title) { choice in
+                CheckedItem(title: choice.title, checked: choice.title == current) { model.setDay(item, to: choice.day) }
+            }
             if item.due != nil {
                 Divider()
                 Button("Remove Date") { model.setDue(item, to: nil, hasTime: false) }
@@ -98,7 +99,7 @@ struct TaskRow: View {
         }
         Menu("Priority") {
             ForEach([("None", 0), ("Low", 9), ("Medium", 5), ("High", 1)], id: \.1) { name, value in
-                CheckedItem(title: name, checked: item.priority == value) { model.setPriority(item, to: value) }
+                CheckedItem(title: name, checked: item.priorityBucket == value) { model.setPriority(item, to: value) }
             }
         }
         Button(item.isFlagged ? "Remove Flag" : "Flag") { model.setFlag(item, to: !item.isFlagged) }
@@ -122,9 +123,7 @@ struct TaskRow: View {
             Label("Delete “\(item.title)”?", systemImage: "trash")
                 .font(.callout.weight(.semibold))
                 .lineLimit(2)
-            Text(item.isRepeating
-                 ? "This also removes all its repeats from Reminders. It can't be undone."
-                 : "It will be removed from Reminders. This can't be undone.")
+            Text(deleteWarning)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -142,6 +141,14 @@ struct TaskRow: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.12)))
         .padding(.vertical, 2)
+    }
+
+    private var deleteWarning: String {
+        let subtasks = model.subtaskCount(of: item)
+        let also = subtasks == 0 ? "" : subtasks == 1 ? " Its sub-task goes too." : " Its \(subtasks) sub-tasks go too."
+        return (item.isRepeating
+                ? "This also removes all its repeats from Reminders."
+                : "It will be removed from Reminders.") + also + " This can't be undone."
     }
 
     private var header: some View {

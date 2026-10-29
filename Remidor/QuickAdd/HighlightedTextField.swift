@@ -20,7 +20,7 @@ struct HighlightedTextField: NSViewRepresentable {
     var onSubmit: () -> Void
     /// Shift + Return.
     var onShiftSubmit: () -> Void = {}
-    /// Return true to keep Tab inside the field; false lets it move focus to the next control.
+    /// Return true to keep Tab inside the field (something was taken in); false lets it move focus on.
     var onTab: () -> Bool
     var onMove: (Int) -> Bool = { _ in false }
     /// Selects the whole text when focus arrives, as when renaming; otherwise the cursor goes to the end.

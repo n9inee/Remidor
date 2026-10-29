@@ -115,7 +115,7 @@ enum ListEntry: Identifiable {
     /// The title over the reminders that are in no section, which come after all the sections.
     case noSection
     case item(ReminderItem)
-    /// A title over a group of reminders in Today, Next Up and Scheduled: "Overdue", a part of the day or a day. A label only: it can't be picked, folded or dragged.
+    /// A title over a group of reminders in a smart list: "Overdue", a part of the day, a day or "Other". A label only: it can't be picked, folded or dragged.
     case day(title: String, isOverdue: Bool, key: String)
 
     var id: String {
@@ -135,6 +135,7 @@ extension ReminderSection {
     func entries(foldedParents: Set<String>, foldedSections: Set<String>, now: Date = Date()) -> [ListEntry] {
         let visible = items.hidingFoldedSubtasks(foldedParents)
         if SmartList.sortsByTime(list) { return timeEntries(of: visible, now: now) }
+        if list.isSmart { return lateFirstEntries(of: visible, now: now) }
         guard !list.isSmart, !sections.isEmpty else { return visible.map(ListEntry.item) }
         let known = Set(sections.map(\.id))
         var result: [ListEntry] = []
@@ -185,6 +186,22 @@ extension ReminderSection {
         return ordered.flatMap { group in
             [ListEntry.day(title: group.title, isOverdue: group.late, key: group.key)] + group.items.map(ListEntry.item)
         }
+    }
+
+    /// Flagged and All keep their own order, with what is late gathered under "Overdue" at the top. A reminder and
+    /// its sub-tasks stay together.
+    private func lateFirstEntries(of visible: [ReminderItem], now: Date) -> [ListEntry] {
+        var late: [ReminderItem] = []
+        var rest: [ReminderItem] = []
+        var inLate = false
+        for item in visible {
+            if item.depth == 0 { inLate = isOverdue(item, now: now) }
+            if inLate { late.append(item) } else { rest.append(item) }
+        }
+        guard !late.isEmpty else { return rest.map(ListEntry.item) }
+        var result: [ListEntry] = [.day(title: "Overdue", isOverdue: true, key: "overdue")] + late.map(ListEntry.item)
+        if !rest.isEmpty { result += [.day(title: "Other", isOverdue: false, key: "other")] + rest.map(ListEntry.item) }
+        return result
     }
 
     /// Where a reminder due today sits in the day, as in the Reminders app.

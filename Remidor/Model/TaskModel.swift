@@ -72,6 +72,11 @@ final class TaskModel {
         didSet { UserDefaults.standard.set(weekendStart, forKey: DefaultsKey.weekendStart) }
     }
 
+    /// How a typed date like 5.10. is read.
+    var dateOrder = DateOrder(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.dateOrder) ?? "") ?? .systemDefault {
+        didSet { UserDefaults.standard.set(dateOrder.rawValue, forKey: DefaultsKey.dateOrder) }
+    }
+
     /// A saved weekday, or the default when nothing valid was saved (1 is Sunday ... 7 is Saturday).
     private static func savedWeekday(_ key: String, default fallback: Int) -> Int {
         let saved = UserDefaults.standard.integer(forKey: key)
@@ -354,7 +359,7 @@ final class TaskModel {
         let byList = Dictionary(grouping: items, by: \.listID)
 
         return lists.filter(isSelected).compactMap { list in
-            let matching: [ReminderItem] = switch list.id {
+            var matching: [ReminderItem] = switch list.id {
             case SmartList.today.id: items.filter { ($0.due ?? .distantFuture) < endOfToday }
             case SmartList.nextUp.id: nextUpItems(from: items)
             case SmartList.scheduled.id: items.filter { $0.due != nil }
@@ -362,8 +367,9 @@ final class TaskModel {
             case SmartList.all.id: items
             default: byList[list.id] ?? []
             }
-            // Smart lists only show when they have something. Your own lists always do, even when empty.
-            guard !matching.isEmpty || !list.isSmart else { return nil }
+            // A smart list shows the sub-tasks of what it lists, dated or not, so checking off a parent never
+            // takes along work that can't be seen.
+            if list.isSmart, list.id != SmartList.all.id { matching = withSubtasks(matching, from: items) }
             let order = sortOrder(for: list)
             var ordered: [ReminderItem]
             if SmartList.sortsByTime(list) {
@@ -381,6 +387,12 @@ final class TaskModel {
             if !list.isSmart { ordered = ordered.groupedBySection() }
             return ReminderSection(list: list, items: ordered.nestingSubtasks(childOrder: { subtaskSortOrders[$0] }), sections: list.isSmart ? [] : listSections[list.id] ?? [])
         }
+    }
+
+    /// The reminders with the sub-tasks of theirs that aren't among them.
+    private func withSubtasks(_ listed: [ReminderItem], from items: [ReminderItem]) -> [ReminderItem] {
+        let ids = Set(listed.map(\.id))
+        return listed + items.filter { !ids.contains($0.id) && ($0.parentID.map(ids.contains) ?? false) }
     }
 
     private static func knownTags(in items: [ReminderItem]) -> [String] {
@@ -558,12 +570,13 @@ final class TaskModel {
             return
         }
         // Sub-tasks go along with their parent.
+        var stuck = 0
         for child in openItems where child.parentID == item.id {
-            if let stored = self.reminder(withID: child.id) {
-                stored.calendar = target
-                _ = save(stored, action: "move")
-            }
+            guard let stored = self.reminder(withID: child.id) else { stuck += 1; continue }
+            stored.calendar = target
+            if !save(stored, action: "move") { stuck += 1 }
         }
+        if stuck > 0 { report("Moved “\(item.title)”, but \(stuck) of its sub-tasks stayed behind.") }
         scheduleRefresh()
     }
 
@@ -605,8 +618,6 @@ final class TaskModel {
             for rule in reminder.recurrenceRules ?? [] { reminder.removeRecurrenceRule(rule) }
             if let recurrence = new.recurrence { reminder.addRecurrenceRule(recurrence.makeRule()) }
         }
-        let moved = new.listID.flatMap { $0 == item.listID ? nil : calendar(withID: $0) }
-        if let moved { reminder.calendar = moved }
         guard save(reminder, action: "edit") else {
             report("Couldn't save “\(item.title)”.")
             scheduleRefresh()
@@ -615,6 +626,8 @@ final class TaskModel {
         if new.flagged != item.isFlagged, !ReminderKit.setFlagged(new.flagged, for: reminder, in: store) {
             report("Saved “\(new.title)”, but couldn't change its flag.")
         }
+        // Moving to another list takes its sub-tasks along, or lets a sub-task go, so it is done the way the List menu does it.
+        if let listID = new.listID, listID != item.listID { move(item, toListID: listID) }
         scheduleRefresh()
     }
 
@@ -764,6 +777,11 @@ final class TaskModel {
         openItems.contains { $0.parentID == item.id }
     }
 
+    /// How many open sub-tasks a reminder has, shown or not.
+    func subtaskCount(of item: ReminderItem) -> Int {
+        openItems.filter { $0.parentID == item.id }.count
+    }
+
     /// Makes a reminder a sub-task of another one in the same list.
     func makeSubtask(_ item: ReminderItem, of parent: ReminderItem) {
         guard item.listID == parent.listID, item.id != parent.id else { return }
@@ -783,9 +801,10 @@ final class TaskModel {
         change(item, "change the date of") { ReminderEditing.setDue(date, hasTime: hasTime, on: $0) }
     }
 
-    /// Moves a reminder to another day, keeping its time of day.
+    /// Moves a reminder to another day, keeping its time of day, unless that time has already gone by on the new
+    /// day: then it only gets the day, so it isn't late the moment it is moved.
     func setDay(_ item: ReminderItem, to day: Date) {
-        let moved = ReminderEditing.moving(item.due, hasTime: item.dueHasTime, toDay: day)
+        let moved = ReminderEditing.rescheduling(item.due, hasTime: item.dueHasTime, toDay: day)
         setDue(item, to: moved.date, hasTime: moved.hasTime)
     }
 
@@ -835,17 +854,26 @@ final class TaskModel {
         scheduleRefresh()
     }
 
-    /// Permanently deletes a reminder.
+    /// Permanently deletes a reminder and its sub-tasks.
     func delete(_ item: ReminderItem) {
         guard let reminder = reminder(withID: item.id) else {
             report("That reminder no longer exists.")
             scheduleRefresh()
             return
         }
-        pendingRemovals[item.id] = Date()
-        do { try store.remove(reminder, commit: true) } catch {
+        let subtasks = openItems.filter { $0.parentID == item.id }
+        let hidden = [item.id] + subtasks.map(\.id)
+        for id in hidden { pendingRemovals[id] = Date() }
+        do {
+            for subtask in subtasks {
+                if let stored = self.reminder(withID: subtask.id) { try store.remove(stored, commit: false) }
+            }
+            try store.remove(reminder, commit: false)
+            try store.commit()
+        } catch {
             log.error("Failed to delete reminder: \(error.localizedDescription)")
-            pendingRemovals[item.id] = nil
+            store.reset()
+            for id in hidden { pendingRemovals[id] = nil }
             report("Couldn't delete “\(item.title)”.")
         }
         scheduleRefresh()
@@ -965,6 +993,7 @@ final class TaskModel {
 
     func start(_ item: ReminderItem, minutes: Int) {
         runTotal = TimeInterval(max(1, minutes) * 60)
+        TimerNotice.askPermission()
         now = Date()
         phase = .running(item, end: now.addingTimeInterval(runTotal))
         startTicking()
@@ -1001,6 +1030,7 @@ final class TaskModel {
         stopTicking()
         phase = .finished(item)
         NSSound(named: "Glass")?.play()
+        TimerNotice.post(for: item)
     }
 
     // MARK: EventKit helpers

@@ -50,6 +50,13 @@ enum ReminderEditing {
         return calendar.date(byAdding: .day, value: ahead, to: start) ?? start
     }
 
+    /// The day with a time on it for when a time is first turned on: the next full hour today, 9:00 on any other day.
+    nonisolated static func withDefaultTime(on day: Date, now: Date = Date()) -> Date {
+        let calendar = Calendar.current
+        let hour = calendar.isDate(day, inSameDayAs: now) ? min(calendar.component(.hour, from: now) + 1, 23) : 9
+        return calendar.date(bySettingHour: hour, minute: 0, second: 0, of: day) ?? day
+    }
+
     /// The same time of day on another day. A reminder without a time simply gets the new day.
     nonisolated static func moving(_ due: Date?, hasTime: Bool, toDay day: Date) -> (date: Date, hasTime: Bool) {
         let calendar = Calendar.current

@@ -34,7 +34,7 @@ struct ReminderBox: View {
                     color: draft.color(for:),
                     focusTrigger: focusTrigger,
                     onSubmit: confirm,
-                    onTab: { absorb(); return true }
+                    onTab: absorb
                 )
                 .frame(maxWidth: .infinity)
             }
@@ -68,12 +68,15 @@ struct ReminderBox: View {
     }
 
     /// Takes in the open suggestion and everything recognized in the text, so it all ends up on the chips.
-    private func absorb() {
-        if draft.absorbTyped() { focusTrigger += 1 }
+    /// Returns false when there was nothing to take in, which lets Tab move on.
+    private func absorb() -> Bool {
+        let absorbed = draft.absorbTyped()
+        if absorbed { focusTrigger += 1 }
+        return absorbed
     }
 
     private func confirm() {
-        absorb()
+        _ = absorb()
         guard !isBusy, let request = draft.request(fallbackTitle: fallbackTitle) else { return }
         onConfirm(request)
     }

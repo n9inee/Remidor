@@ -13,7 +13,6 @@ struct SettingsView: View {
     @State private var hotKey = HotKeyManager.shared
     @State private var launchAtLogin = LaunchAtLogin.shared
     @State private var updates = UpdateChecker.shared
-    @State private var leftColumnHeight: CGFloat = 0
     @State private var creatingList = false
 
     var body: some View {
@@ -48,16 +47,24 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
                 }
-                GroupBox("Week") {
+                GroupBox("Dates") {
                     VStack(alignment: .leading, spacing: 6) {
                         Picker("Week starts on", selection: $model.weekStart) { weekdayChoices }
                         Picker("Weekend starts on", selection: $model.weekendStart) { weekdayChoices }
-                        Text("Next Week and Weekend in the date choices land on these days.")
+                        Picker("Typed dates", selection: $model.dateOrder) {
+                            ForEach(DateOrder.allCases) { Text($0.label).tag($0) }
+                        }
+                        Text("Next Week and Weekend land on these days. A typed 5.10. or 5/10 is read the way you pick here.")
                             .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
                 }
+            }
+            .frame(width: 270)
+
+            VStack(spacing: 14) {
                 GroupBox("Timer") {
                     VStack(spacing: 8) {
                         Text("Default duration").frame(maxWidth: .infinity, alignment: .leading)
@@ -84,13 +91,11 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(6)
                 }
+                // A fixed height, so a long list of lists scrolls instead of making the window taller.
+                GroupBox("Lists shown in the menu bar") { listsPane }
+                    .frame(height: 250)
             }
-            .frame(width: 270)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { leftColumnHeight = $0 }
-
-            // The lists column is exactly as tall as the left column and scrolls if the lists don't fit.
-            GroupBox("Lists shown in the menu bar") { listsPane }
-                .frame(width: 280, height: leftColumnHeight > 0 ? leftColumnHeight : nil)
+            .frame(width: 280)
         }
         .padding(16)
         .task { await model.refresh() }
