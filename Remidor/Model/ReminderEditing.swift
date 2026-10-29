@@ -26,6 +26,13 @@ enum ReminderEditing {
         if hasTime { reminder.addAlarm(EKAlarm(absoluteDate: date)) }
     }
 
+    /// The start of the day after `now`. Not a fixed 24 hours on, since a day is 23 or 25 hours long when the clocks change.
+    nonisolated static func startOfTomorrow(after now: Date = Date()) -> Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        return calendar.date(byAdding: .day, value: 1, to: today) ?? today.addingTimeInterval(86_400)
+    }
+
     /// The first day of next week: the next `weekStart` (1 is Sunday ... 7 is Saturday) after today.
     nonisolated static func nextWeekStart(_ weekStart: Int, from now: Date = Date()) -> Date {
         let today = Calendar.current.startOfDay(for: now)
@@ -57,12 +64,5 @@ enum ReminderEditing {
         let moved = moving(due, hasTime: hasTime, toDay: day)
         guard moved.hasTime, moved.date < now else { return moved }
         return (Calendar.current.startOfDay(for: day), false)
-    }
-
-    /// A sensible time to start from when a date gets a time for the first time: the next full hour.
-    nonisolated static func defaultTime(on day: Date, now: Date = Date()) -> Date {
-        let calendar = Calendar.current
-        let nextHour = min(calendar.component(.hour, from: now) + 1, 23)
-        return calendar.date(bySettingHour: nextHour, minute: 0, second: 0, of: day) ?? day
     }
 }

@@ -14,6 +14,7 @@ import Observation
 /// will actually be saved.
 @MainActor @Observable
 final class QuickAddDraft {
+    /// A list, tag or flag offered while one is being typed.
     struct Suggestion: Identifiable {
         let label: String
         var listID: String?

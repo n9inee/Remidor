@@ -18,6 +18,7 @@ struct PanelAligner: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { AlignerView() }
     func updateNSView(_ view: NSView, context: Context) { (view as? AlignerView)?.align() }
 
+    /// Watches the panel and the menu bar item, and keeps the panel under the item.
     private final class AlignerView: NSView {
         private var observers: [NSObjectProtocol] = []
         private var isAligning = false

@@ -202,6 +202,7 @@ struct QuickAddView: View {
     }
 }
 
+/// The lists or tags that match what is being typed, to pick with the mouse.
 struct SuggestionList: View {
     let suggestions: [QuickAddDraft.Suggestion]
     let onSelect: (QuickAddDraft.Suggestion) -> Void

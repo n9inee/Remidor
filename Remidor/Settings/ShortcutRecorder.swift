@@ -8,12 +8,19 @@
 import Carbon.HIToolbox
 import SwiftUI
 
+/// The recorder that is listening for keys. Only one can at a time, or a key would be given to both.
+@MainActor private enum ActiveRecorder {
+    static var id: UUID?
+    static var stop: (() -> Void)?
+}
+
 /// Click, then press the key combination you want. Esc cancels, Delete clears.
 struct ShortcutRecorder: View {
     let hotKey: HotKeyManager
     let action: HotKeyAction
     @State private var recording = false
     @State private var monitor: Any?
+    @State private var id = UUID()
 
     var body: some View {
         HStack(spacing: 6) {
@@ -42,6 +49,10 @@ struct ShortcutRecorder: View {
     }
 
     private func start() {
+        guard monitor == nil else { return }
+        ActiveRecorder.stop?()
+        ActiveRecorder.id = id
+        ActiveRecorder.stop = stop
         recording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             handle(event)
@@ -53,6 +64,7 @@ struct ShortcutRecorder: View {
         recording = false
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        if ActiveRecorder.id == id { ActiveRecorder.id = nil; ActiveRecorder.stop = nil }
     }
 
     private func handle(_ event: NSEvent) {

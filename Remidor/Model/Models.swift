@@ -36,6 +36,7 @@ struct ReminderItem: Identifiable, Equatable {
     var priorityRank: Int { priority == 0 ? 10 : priority }
 }
 
+/// A list shown in the dropdown: one of the Reminders lists or a built-in smart list.
 struct ReminderList: Identifiable {
     let id: String
     let title: String
@@ -49,6 +50,7 @@ struct ReminderList: Identifiable {
     }
 }
 
+/// A list with the reminders it shows, and its sections if it has any.
 struct ReminderSection: Identifiable {
     let list: ReminderList
     let items: [ReminderItem]
@@ -82,6 +84,7 @@ enum SmartList {
     }
 }
 
+/// How reminders are ordered within a list.
 enum SortOrder: String, CaseIterable, Identifiable {
     case manual, dueDate, priority, title, creationDate
 

@@ -832,6 +832,14 @@ struct WeekDayTests {
         #expect(repeating.recurrence == .weekendsOnly)
     }
 
+    @Test func tomorrowStartsAtTheNextMidnight() {
+        let calendar = Calendar.current
+        let now = date(2026, 10, 28)
+        let tomorrow = ReminderEditing.startOfTomorrow(after: now)
+        #expect(tomorrow == calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: now)!))
+        #expect(calendar.component(.hour, from: tomorrow) == 0)
+    }
+
     @Test func weekendIsTodayWhenItStartsToday() {
         let saturday = date(2026, 10, 31)
         #expect(Calendar.current.isDate(ReminderEditing.weekend(startingOn: 7, from: saturday), inSameDayAs: saturday))

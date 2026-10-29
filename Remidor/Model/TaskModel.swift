@@ -64,12 +64,18 @@ final class TaskModel {
     }
 
     /// The weekday "Next week" lands on, and the one "Weekend" lands on (1 is Sunday ... 7 is Saturday).
-    var weekStart: Int = UserDefaults.standard.object(forKey: DefaultsKey.weekStart) as? Int ?? 2 {
+    var weekStart: Int = TaskModel.savedWeekday(DefaultsKey.weekStart, default: 2) {
         didSet { UserDefaults.standard.set(weekStart, forKey: DefaultsKey.weekStart) }
     }
 
-    var weekendStart: Int = UserDefaults.standard.object(forKey: DefaultsKey.weekendStart) as? Int ?? 7 {
+    var weekendStart: Int = TaskModel.savedWeekday(DefaultsKey.weekendStart, default: 7) {
         didSet { UserDefaults.standard.set(weekendStart, forKey: DefaultsKey.weekendStart) }
+    }
+
+    /// A saved weekday, or the default when nothing valid was saved (1 is Sunday ... 7 is Saturday).
+    private static func savedWeekday(_ key: String, default fallback: Int) -> Int {
+        let saved = UserDefaults.standard.integer(forKey: key)
+        return (1...7).contains(saved) ? saved : fallback
     }
 
     /// Where late reminders can be moved to, for the Reschedule menus.
@@ -345,7 +351,7 @@ final class TaskModel {
     }
 
     private func makeSections(from items: [ReminderItem], listSections: [String: [ReminderKit.ListSection]]) -> [ReminderSection] {
-        let endOfToday = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86_400)
+        let endOfToday = ReminderEditing.startOfTomorrow()
         let byList = Dictionary(grouping: items, by: \.listID)
 
         return lists.filter(isSelected).compactMap { list in
@@ -547,7 +553,11 @@ final class TaskModel {
             return
         }
         reminder.calendar = target
-        if !save(reminder, action: "move") { report("Couldn't move “\(item.title)”.") }
+        guard save(reminder, action: "move") else {
+            report("Couldn't move “\(item.title)”.")
+            scheduleRefresh()
+            return
+        }
         // Sub-tasks go along with their parent.
         for child in openItems where child.parentID == item.id {
             if let stored = self.reminder(withID: child.id) {
@@ -556,11 +566,6 @@ final class TaskModel {
             }
         }
         scheduleRefresh()
-    }
-
-    /// The open reminder with this id, from the latest fetch.
-    func openItem(withID id: String) -> ReminderItem? {
-        openItems.first { $0.id == id }
     }
 
     /// Puts a reminder next to another one of the same list, and switches that list to manual order so
@@ -719,7 +724,11 @@ final class TaskModel {
 
     func renameList(_ list: ReminderList, to name: String) {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, let calendar = calendar(withID: list.id), calendar.allowsContentModifications else { return }
+        guard !name.isEmpty, let calendar = calendar(withID: list.id) else { return }
+        guard calendar.allowsContentModifications else {
+            report("“\(list.title)” can't be renamed.")
+            return
+        }
         calendar.title = name
         do { try store.saveCalendar(calendar, commit: true) } catch {
             log.error("Failed to rename list: \(error.localizedDescription)")
@@ -739,6 +748,8 @@ final class TaskModel {
             log.error("Failed to delete list: \(error.localizedDescription)")
             store.reset()
             report("Couldn't delete the list “\(list.title)”.")
+            scheduleRefresh()
+            return
         }
         // Forget what was kept for the list.
         if preferredListID == list.id { preferredListID = nil }
@@ -937,7 +948,7 @@ final class TaskModel {
                 pendingRemovals[id] = nil
                 if let subtask = self.reminder(withID: id) {
                     subtask.isCompleted = false
-                    _ = save(subtask, action: "undo")
+                    if !save(subtask, action: "undo") { report("Couldn't restore the sub-task “\(subtask.title ?? "Untitled")”.") }
                 }
             }
         } else {

@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+/// The Settings window: general options, sorting, week days, the timer, shortcuts and the lists.
 struct SettingsView: View {
     @Bindable var model: TaskModel
     @State private var hotKey = HotKeyManager.shared

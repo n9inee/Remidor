@@ -9,6 +9,7 @@ import Carbon.HIToolbox
 import Foundation
 import Observation
 
+/// A key and its modifiers, saved as a global shortcut.
 struct Shortcut: Codable, Equatable {
     var keyCode: UInt32
     var modifiers: UInt32   // Carbon modifier flags
@@ -90,6 +91,8 @@ final class HotKeyManager {
         shortcuts[action] = shortcut
         UserDefaults.standard.set(shortcut.flatMap { try? JSONEncoder().encode($0) } ?? Data(), forKey: action.defaultsKey)
         register(action)
+        // A shortcut that was refused because this one had its combination may be free now.
+        for other in conflicts where other != action { register(other) }
     }
 
     func start(_ handlers: [HotKeyAction: () -> Void]) {

@@ -18,6 +18,7 @@ struct HoverButtonStyle: ButtonStyle {
         Label(configuration: configuration, horizontal: horizontal, vertical: vertical, radius: radius)
     }
 
+    /// The button's label with the highlight that follows the pointer.
     private struct Label: View {
         let configuration: ButtonStyleConfiguration
         let horizontal: CGFloat

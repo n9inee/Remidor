@@ -501,6 +501,8 @@ struct TaskList: View {
             .help("Drag to resize the list. Double-click to reset.")
             .accessibilityLabel("Resize the list")
             .animation(.snappy(duration: 0.3), value: gripHovering)
+            // A cursor that was pushed has to be popped, even if the handle goes away under the pointer.
+            .onDisappear { if gripHovering { gripHovering = false; NSCursor.pop() } }
     }
 
     /// Changes whenever a section or task appears, disappears or moves, to drive the list animation.
@@ -519,6 +521,7 @@ private struct ThinScrollers: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { ConfiguringView(handle: handle) }
     func updateNSView(_ view: NSView, context: Context) { (view as? ConfiguringView)?.configure() }
 
+    /// A view that finds the scroll view around it and restyles it.
     private final class ConfiguringView: NSView {
         let handle: ScrollHandle
 

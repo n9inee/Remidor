@@ -73,7 +73,7 @@ struct DropResolver {
     /// the middle makes it a sub-task.
     private func action(for moving: ReminderItem, on list: ReminderList, row target: ReminderItem?, fraction: CGFloat) -> DropAction? {
         if list.isSmart {
-            let endOfToday = Calendar.current.startOfDay(for: now).addingTimeInterval(86_400)
+            let endOfToday = ReminderEditing.startOfTomorrow(after: now)
             if list.id == SmartList.flagged.id { return moving.isFlagged ? nil : .flag }
             if list.id == SmartList.today.id { return (moving.due ?? .distantFuture) < endOfToday ? nil : .today }
             return nil   // Scheduled and All take nothing

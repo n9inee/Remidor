@@ -10,13 +10,16 @@ import Foundation
 /// Turns "call mom fri at 5pm !!! * ~Family #phone" into a title, due date, priority, flag and list, and
 /// reports where each recognized piece sits in the input so the UI can highlight it.
 enum QuickAddParser {
+    /// What a recognized piece of the text sets.
     enum Kind { case date, priority, flag, list, tag, recurrence }
 
+    /// A recognized piece of the text.
     struct Token {
         let range: NSRange   // UTF-16 range in the original input
         let kind: Kind
     }
 
+    /// What the text adds up to: the title that is left and everything taken out of it.
     struct Result {
         var title = ""
         var priority: Int?      // EventKit scale: 1 high, 5 medium, 9 low

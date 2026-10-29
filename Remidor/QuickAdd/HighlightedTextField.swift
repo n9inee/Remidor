@@ -112,6 +112,7 @@ struct HighlightedTextField: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    /// Passes what is typed on to the binding and handles Return, Tab and the arrow keys.
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: HighlightedTextField
         var lastFocus = 0

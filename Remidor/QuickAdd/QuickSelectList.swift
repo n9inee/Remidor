@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+/// A row under the quick-add box: the "Add …" row or a reminder to pick.
 enum QuickRow: Identifiable {
     case add(String)
     /// A task, with the list it is shown under. The same task can appear under Today and under its own list.
@@ -139,6 +140,7 @@ struct QuickSelectList: View {
     }
 }
 
+/// One row of the pick list, with its completion ring and details.
 private struct QuickRowView: View {
     let row: QuickRow
     let selected: Bool

@@ -10,6 +10,7 @@ import Foundation
 
 /// How a reminder repeats: every so many days, weeks, months or years, on certain weekdays for weekly ones.
 struct Recurrence: Equatable {
+    /// How often a repeat comes round.
     enum Frequency: Equatable {
         case daily, weekly, monthly, yearly
     }

@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+/// Registers the global shortcuts and starts the update check once the app has launched.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// The menu bar item with its dropdown, and the Settings window.
 @main
 struct RemidorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate

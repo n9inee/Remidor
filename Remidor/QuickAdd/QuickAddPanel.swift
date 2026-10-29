@@ -8,10 +8,13 @@
 import AppKit
 import SwiftUI
 
+/// The borderless window of the quick-add box. It can take keyboard focus without activating the app.
 private final class FloatingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-    override func cancelOperation(_ sender: Any?) { close() }   // Esc
+    /// Esc. The controller closes it, so its click monitor goes too.
+    var onCancel: (() -> Void)?
+    override func cancelOperation(_ sender: Any?) { onCancel?() }
 }
 
 /// Reports its fitting size whenever the SwiftUI content changes, so the panel can follow it.
@@ -59,6 +62,7 @@ final class QuickAddPanelController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
+        panel.onCancel = { [weak self] in self?.close() }
         host.onFitChange = { @MainActor [weak self, weak panel, weak host] fit in
             guard let self, let panel, let host else { return }
             follow(fit, with: panel, host: host)

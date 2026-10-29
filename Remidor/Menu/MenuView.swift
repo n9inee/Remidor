@@ -108,6 +108,7 @@ struct MenuView: View {
     }
 }
 
+/// A button in the dropdown's footer, with an icon and a title.
 private struct FooterButton: View {
     let title: String
     let icon: String
@@ -124,6 +125,7 @@ private struct FooterButton: View {
     }
 }
 
+/// Shows only the icon when a footer button is icon-only.
 private struct FooterLabelStyle: LabelStyle {
     let iconOnly: Bool
 

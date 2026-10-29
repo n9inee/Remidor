@@ -11,6 +11,7 @@ import OSLog
 
 private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Remidor", category: "updates")
 
+/// A newer release and the page to get it from.
 struct AvailableUpdate: Equatable {
     let version: String
     let url: URL
@@ -24,6 +25,7 @@ final class UpdateChecker {
 
     nonisolated static let repository = "n9inee/Remidor"
 
+    /// What the last update check found.
     enum Status: Equatable {
         case idle, checking, upToDate
         case available(AvailableUpdate)
@@ -117,6 +119,7 @@ final class UpdateChecker {
         return parse(data)
     }
 
+    /// The parts of GitHub's answer that are used.
     private struct Release: Decodable {
         let tag_name: String
         let html_url: String
