@@ -112,10 +112,20 @@ struct QuickAddControls: View {
                 quickDate("Weekend", day: draft.weekendDay)
                 quickDate("Next week", day: draft.nextWeekDay)
                 Spacer()
-                Button("Clear") { draft.clearDate() }.controlSize(.small)
+                Button("Clear") {
+                    draft.clearDate()
+                    showCalendar = false
+                }
+                .controlSize(.small)
             }
-            Toggle("Time", isOn: Binding(get: { draft.hasTime }, set: { draft.setTime($0) }))
-                .toggleStyle(.switch).controlSize(.small)
+            HStack {
+                Toggle("Time", isOn: Binding(get: { draft.hasTime }, set: { draft.setTime($0) }))
+                    .toggleStyle(.switch).controlSize(.small)
+                Spacer()
+                Button("Done") { showCalendar = false }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+            }
             DatePicker("", selection: Binding(get: { draft.due ?? Date() }, set: { draft.setDate($0) }),
                        displayedComponents: draft.hasTime ? [.date, .hourAndMinute] : [.date])
                 .datePickerStyle(.graphical).labelsHidden()
@@ -127,8 +137,11 @@ struct QuickAddControls: View {
     }
 
     private func quickDate(_ title: String, day: Date) -> some View {
-        Button(title) { draft.setDay(day) }
-            .controlSize(.small)
+        Button(title) {
+            draft.setDay(day)
+            showCalendar = false
+        }
+        .controlSize(.small)
     }
 
     private var dateLabel: String {

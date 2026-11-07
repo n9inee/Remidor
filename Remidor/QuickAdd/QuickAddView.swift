@@ -21,6 +21,10 @@ struct QuickAddView: View {
     @State private var isAdding = false
     @State private var focusTrigger = 0
     @State private var selection = 0
+    @State private var expanded = Set<String>()
+    @State private var editing = Set<String>()
+    /// The smart list picked with the chips under the box, if any.
+    @State private var listFilter: String?
 
     init(model: TaskModel, autofocus: Bool = false, onAdded: (() -> Void)? = nil, onPickTask: ((ReminderItem) -> Void)? = nil) {
         self.model = model
@@ -48,9 +52,12 @@ struct QuickAddView: View {
             // Always shown, so the box keeps its size when the first character is typed.
             QuickAddControls(draft: draft, showCalendar: $showCalendar)
 
+            if onPickTask != nil { listChips }
+
             if !rows.isEmpty {
                 Divider().padding(.vertical, 2)
-                QuickSelectList(rows: rows, selection: $selection, onActivate: activate, onComplete: model.completeOnly)
+                QuickSelectList(model: model, rows: rows, selection: $selection, expanded: $expanded, editing: $editing,
+                                onActivate: activate, onComplete: model.completeOnly, onRefocus: { focusTrigger += 1 })
                     .transition(.opacity)
             }
 
@@ -67,6 +74,7 @@ struct QuickAddView: View {
             }
         }
         .background(undoShortcut)
+        .background(rowShortcuts)
         .animation(.snappy(duration: 0.44), value: model.undoBannerItem?.id)
         .animation(.snappy(duration: 0.44), value: model.errorMessage)
         .onChange(of: draft.text) { selection = 0 }
@@ -78,6 +86,61 @@ struct QuickAddView: View {
         .animation(.snappy(duration: 0.44), value: suggestions.map(\.id))
         .animation(.snappy(duration: 0.44), value: draft.pickedTags)
         .animation(.snappy(duration: 0.44), value: showCalendar)
+    }
+
+    /// Today, Scheduled, Flagged and the other smart lists, to look at one list on its own. Picking the
+    /// chosen one again shows everything.
+    private var listChips: some View {
+        HStack(spacing: 6) {
+            ForEach(model.sections.map(\.list).filter(\.isSmart)) { list in
+                let on = list.id == activeFilter
+                Button { listFilter = on ? nil : list.id } label: {
+                    Text(list.title)
+                        .font(.caption)
+                        .foregroundStyle(on ? list.color : .secondary)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Capsule().fill(on ? list.color.opacity(0.15) : Color.primary.opacity(0.08)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }
+        .animation(.easeOut(duration: 0.12), value: listFilter)
+    }
+
+    /// The chosen smart list, unless it has been turned off in Settings since.
+    private var activeFilter: String? {
+        listFilter.flatMap { id in model.sections.contains { $0.list.id == id } ? id : nil }
+    }
+
+    /// The highlighted task and the list it is shown under.
+    private func highlighted() -> (item: ReminderItem, list: ReminderList)? {
+        let rows = quickRows(suggestions: draft.suggestions)
+        guard rows.indices.contains(selection), case .task(let item, let list) = rows[selection] else { return nil }
+        return (item, list)
+    }
+
+    /// ⌘F flags, ⌘I opens the details and ⌘E edits the highlighted task.
+    private var rowShortcuts: some View {
+        Group {
+            Button("Flag") { if let task = highlighted() { model.setFlag(task.item, to: !task.item.isFlagged) } }
+                .keyboardShortcut("f", modifiers: .command)
+            Button("Details") {
+                guard let task = highlighted() else { return }
+                let key = QuickRow.key(of: task.item, in: task.list)
+                if expanded.contains(key) { expanded.remove(key) } else { expanded.insert(key) }
+            }
+            .keyboardShortcut("i", modifiers: .command)
+            Button("Edit") { if let task = highlighted() { editing.insert(QuickRow.key(of: task.item, in: task.list)) } }
+                .keyboardShortcut("e", modifiers: .command)
+        }
+        // Not in the dropdown, and not while a task is being edited.
+        .disabled(onPickTask == nil || !editing.isEmpty)
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
     }
 
     /// ⌘Z undoes the last completed task. While something is typed it is left alone, so it still
@@ -130,8 +193,13 @@ struct QuickAddView: View {
         guard onPickTask != nil, suggestions.isEmpty else { return [] }
         // Grouped like the dropdown: Today and the other smart lists, then each list with its sections.
         let query = draft.title.lowercased()
-        let tasks = model.sections.flatMap { section in
-            section.items
+        let tasks = model.sections.filter { activeFilter == nil || $0.list.id == activeFilter }.flatMap { section in
+            // A smart list puts what is late first. Folded sub-tasks stay hidden unless something is being searched for.
+            section.entries(foldedParents: query.isEmpty ? model.collapsedParentIDs : [], foldedSections: [])
+                .compactMap { entry -> ReminderItem? in
+                    if case .item(let item) = entry { return item }
+                    return nil
+                }
                 .filter { query.isEmpty || $0.title.lowercased().contains(query) }
                 .map { QuickRow.task($0, in: section.list) }
         }
