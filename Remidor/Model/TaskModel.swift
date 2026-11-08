@@ -440,6 +440,44 @@ final class TaskModel {
         scheduleRefresh()
     }
 
+    // MARK: Searching and the keyboard
+
+    /// The lists as shown while searching: only what matches. Without a search, all of them.
+    func displayedSections(matching query: String) -> [ReminderSection] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty ? sections : sections.compactMap { $0.filtered(by: query) }
+    }
+
+    /// The keys of the reminders in the order the dropdown shows them, for moving through them with the arrow keys.
+    /// Folded lists, sections and sub-tasks are skipped, except while searching.
+    func rowKeys(matching query: String) -> [String] {
+        let searching = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return displayedSections(matching: query).flatMap { section -> [String] in
+            guard searching || !collapsedListIDs.contains(section.id) else { return [] }
+            let entries = section.entries(foldedParents: searching ? [] : collapsedParentIDs,
+                                          foldedSections: searching ? [] : collapsedSectionIDs)
+            return entries.compactMap { entry in
+                if case .item(let item) = entry { section.key(for: item) } else { nil }
+            }
+        }
+    }
+
+    func item(forRowKey key: String) -> ReminderItem? {
+        sections.lazy.compactMap { section in section.items.first { section.key(for: $0) == key } }.first
+    }
+
+    /// What was typed in the hotkey box when it closed, kept for a while so Esc or a stray click doesn't lose it.
+    @ObservationIgnored private var panelDraft: QuickAddDraft?
+    @ObservationIgnored var panelClosedAt: Date?
+
+    /// The draft for the hotkey box: the unfinished one from a moment ago, or a new one.
+    func draftForPanel(now: Date = Date()) -> QuickAddDraft {
+        if let panelDraft, panelDraft.hasText, let closed = panelClosedAt, now.timeIntervalSince(closed) < 600 { return panelDraft }
+        let fresh = QuickAddDraft(model: self)
+        panelDraft = fresh
+        return fresh
+    }
+
     // MARK: Changing reminders
 
     /// Adds a reminder. With a parent it becomes that reminder's sub-task, and with a section id it is put into
@@ -459,6 +497,8 @@ final class TaskModel {
         reminder.priority = new.priority ?? 0
         if let due = new.due { ReminderEditing.setDue(due, hasTime: new.hasTime, on: reminder) }
         if let recurrence = new.recurrence { reminder.addRecurrenceRule(recurrence.makeRule()) }
+        reminder.notes = new.notes
+        reminder.url = new.url
         guard save(reminder, action: "add") else {
             report("Couldn't add the reminder. Please try again.")
             return false
@@ -601,7 +641,7 @@ final class TaskModel {
         }
     }
 
-    /// Saves what was edited in place: title, date, priority, flag and list.
+    /// Saves what was edited in place: title, notes, link, date, priority, flag and list.
     func update(_ item: ReminderItem, to new: NewReminder) {
         guard let reminder = reminder(withID: item.id) else {
             report("That reminder no longer exists.")
@@ -613,6 +653,8 @@ final class TaskModel {
             ReminderEditing.setDue(new.due, hasTime: new.hasTime, on: reminder)
         }
         reminder.priority = new.priority ?? 0
+        if new.notes != item.notes { reminder.notes = new.notes }
+        if new.url != item.url { reminder.url = new.url }
         // Only touched when it was changed, so a repeat Remidor can't describe stays as it is.
         if new.recurrence != item.recurrence {
             for rule in reminder.recurrenceRules ?? [] { reminder.removeRecurrenceRule(rule) }
@@ -1070,7 +1112,7 @@ final class TaskModel {
     }
 }
 
-private extension String {
+extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 

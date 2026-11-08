@@ -16,10 +16,10 @@ struct QuickAddControls: View {
         VStack(alignment: .leading, spacing: 6) {
             buttons
             if !draft.pickedTags.isEmpty {
-                tagChips.transition(.opacity.combined(with: .move(edge: .top)))
+                tagChips.transition(RevealTransition())
             }
             if showCalendar {
-                calendar.transition(.opacity.combined(with: .move(edge: .top)))
+                calendar.transition(RevealTransition())
             }
         }
     }

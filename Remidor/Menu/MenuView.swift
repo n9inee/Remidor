@@ -14,6 +14,11 @@ struct MenuView: View {
     @State private var minutes = 30
     @State private var updates = UpdateChecker.shared
     @State private var creatingList = false
+    /// The reminder the arrow keys are on, the search box and what is typed in it.
+    @State private var highlight: String?
+    @State private var searching = false
+    @State private var query = ""
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -27,10 +32,99 @@ struct MenuView: View {
         .background(PanelAligner())
         .animation(.snappy(duration: 0.5), value: model.phase)
         .animation(.snappy(duration: 0.4), value: creatingList)
+        .animation(.snappy(duration: 0.4), value: searching)
         .animation(.snappy(duration: 0.5), value: model.undoBannerItem?.id)
         .animation(.snappy(duration: 0.5), value: model.errorMessage)
         .animation(.snappy(duration: 0.5), value: updates.availableUpdate)
-        .onAppear { model.scheduleRefresh() }
+        .onAppear {
+            model.scheduleRefresh()
+            highlight = nil
+        }
+    }
+
+    // MARK: Keyboard and search
+
+    private var activeQuery: String { searching ? query : "" }
+
+    /// ↑ and ↓ move through the reminders as listed. False when there are none, so the key does what it always did.
+    private func moveHighlight(_ delta: Int) -> Bool {
+        let keys = model.rowKeys(matching: activeQuery)
+        guard !keys.isEmpty else { return false }
+        if let current = highlight.flatMap(keys.firstIndex(of:)) {
+            highlight = keys[min(max(current + delta, 0), keys.count - 1)]
+        } else {
+            highlight = delta > 0 ? keys.first : keys.last
+        }
+        return true
+    }
+
+    /// Starts the timer for the highlighted reminder. False when nothing is highlighted.
+    private func openHighlighted() -> Bool {
+        guard let item = highlight.flatMap(model.item(forRowKey:)) else { return false }
+        minutes = model.defaultMinutes
+        model.select(item)
+        return true
+    }
+
+    /// Checks off the highlighted reminder and moves on to the next one, so Shift + Return can be pressed again.
+    private func completeHighlighted() {
+        guard let key = highlight, let item = model.item(forRowKey: key) else { return }
+        let keys = model.rowKeys(matching: activeQuery)
+        func other(_ key: String) -> Bool {
+            guard let candidate = model.item(forRowKey: key) else { return false }
+            return candidate.id != item.id && candidate.parentID != item.id
+        }
+        if let index = keys.firstIndex(of: key) {
+            highlight = keys[(index + 1)...].first(where: other) ?? keys[..<index].last(where: other)
+        }
+        model.completeOnly(item)
+    }
+
+    private func toggleSearch() {
+        searching.toggle()
+        query = ""
+        highlight = nil
+        if searching { searchFocused = true }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").font(.caption).foregroundStyle(.secondary)
+            TextField("Search reminders", text: $query)
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
+                .onChange(of: query) { highlight = model.rowKeys(matching: query).first }
+                .onKeyPress(.upArrow) { moveHighlight(-1) ? .handled : .ignored }
+                .onKeyPress(.downArrow) { moveHighlight(1) ? .handled : .ignored }
+                .onKeyPress(keys: [.return], phases: .down) { press in
+                    if press.modifiers.contains(.shift) {
+                        completeHighlighted()
+                        return .handled
+                    }
+                    return openHighlighted() ? .handled : .ignored
+                }
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear the search")
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 7).fill(.quaternary))
+        .onAppear { searchFocused = true }
+        .onExitCommand(perform: toggleSearch)
+        .transition(RevealTransition())
+    }
+
+    /// ⌘F opens and closes the search.
+    private var searchShortcut: some View {
+        Button("Search", action: toggleSearch)
+            .keyboardShortcut("f", modifiers: .command)
+            .frame(width: 0, height: 0)
+            .opacity(0)
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder private var content: some View {
@@ -38,27 +132,30 @@ struct MenuView: View {
         case .idle:
             VStack(alignment: .leading, spacing: 10) {
                 if model.hasAccess {
-                    QuickAddView(model: model)
+                    QuickAddView(model: model, autofocus: true, onMoveRow: moveHighlight, onOpenRow: openHighlighted,
+                                 onCompleteRow: completeHighlighted)
                     Divider()
+                    if searching { searchField }
                 }
-                TaskList(model: model) { item in
+                TaskList(model: model, search: activeQuery, highlight: highlight) { item in
                     minutes = model.defaultMinutes
                     model.select(item)
                 }
                 if creatingList { NewListForm(model: model) { creatingList = false } }
                 if let completed = model.undoBannerItem {
                     UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(RevealTransition())
                 }
                 if let message = model.errorMessage {
                     ErrorBanner(message: message, onDismiss: model.dismissError)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(RevealTransition())
                 }
                 if let update = updates.availableUpdate {
                     UpdateBanner(update: update, onDismiss: updates.dismissBanner)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(RevealTransition())
                 }
             }
+            .background(searchShortcut)
         case .choosing(let item):
             TimerSetupView(item: item, minutes: $minutes, secondaryTitle: "Cancel", onSecondary: model.cancel) {
                 model.start(item, minutes: minutes)
@@ -85,6 +182,7 @@ struct MenuView: View {
                 }
                 FooterButton(title: "Open Reminders", icon: "checklist", iconOnly: true, action: model.openRemindersApp)
                 if model.hasAccess {
+                    FooterButton(title: "Search", icon: "magnifyingglass", iconOnly: true, action: toggleSearch)
                     FooterButton(title: "New List", icon: "plus", iconOnly: true) { withAnimation(.snappy(duration: 0.4)) { creatingList.toggle() } }
                 }
             }

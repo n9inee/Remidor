@@ -37,8 +37,8 @@ final class QuickAddPanelController {
     static let shared = QuickAddPanelController()
 
     private var panel: FloatingPanel?
+    private weak var model: TaskModel?
     private var clickMonitor: Any?
-    private var pendingShrink: DispatchWorkItem?
 
     func toggle(model: TaskModel) {
         if panel?.isVisible == true { close() } else { show(model: model) }
@@ -48,7 +48,8 @@ final class QuickAddPanelController {
         close()
         model.scheduleRefresh()
 
-        let host = FittingHostingView(rootView: QuickAddPanelContent(model: model) { [weak self] in self?.close() })
+        self.model = model
+        let host = FittingHostingView(rootView: QuickAddPanelContent(model: model, draft: model.draftForPanel()) { [weak self] in self?.close() })
         host.layoutSubtreeIfNeeded()
         let size = host.fittingSize
 
@@ -94,11 +95,11 @@ final class QuickAddPanelController {
     }
 
     func close() {
-        pendingShrink?.cancel()
         if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
         clickMonitor = nil
         guard let panel else { return }
         self.panel = nil
+        model?.panelClosedAt = Date()
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.2
             panel.animator().alphaValue = 0
@@ -107,35 +108,21 @@ final class QuickAddPanelController {
         })
     }
 
-    /// Grows the window at once and lets SwiftUI animate the content inside it. Shrinking waits until
-    /// the content's own animation has finished, otherwise views that are leaving get clipped mid-fade.
+    /// Keeps the window as tall as its content, with the top edge where it is. The content opens and closes
+    /// through animated heights, so this follows it frame by frame, and no delay is needed on the way down.
     private func follow(_ fit: NSSize, with panel: NSPanel, host: NSView) {
-        guard fit.height > 0 else { return }
-        pendingShrink?.cancel()
-
-        func resize(to height: CGFloat) {
-            guard abs(height - panel.frame.height) > 0.5 else { return }
-            var frame = panel.frame
-            frame.origin.y += frame.height - height   // keep the top edge where it is
-            frame.size.height = height
-            panel.setFrame(frame, display: true)
-        }
-
-        if fit.height >= panel.frame.height {
-            resize(to: fit.height)
-        } else {
-            let work = DispatchWorkItem { [weak host] in
-                if let host { resize(to: host.fittingSize.height) }
-            }
-            pendingShrink = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
-        }
+        guard fit.height > 0, abs(fit.height - panel.frame.height) > 0.5 else { return }
+        var frame = panel.frame
+        frame.origin.y += frame.height - fit.height
+        frame.size.height = fit.height
+        panel.setFrame(frame, display: true)
     }
 }
 
 /// Add or pick a task; picking one continues with choosing how long to work on it.
 private struct QuickAddPanelContent: View {
     let model: TaskModel
+    let draft: QuickAddDraft
     let dismiss: () -> Void
 
     @State private var chosen: ReminderItem?
@@ -150,7 +137,7 @@ private struct QuickAddPanelContent: View {
                 }
                 .transition(.opacity)
             } else {
-                QuickAddView(model: model, autofocus: true, onAdded: dismiss) { item in
+                QuickAddView(model: model, autofocus: true, draft: draft, onAdded: dismiss) { item in
                     minutes = model.defaultMinutes
                     chosen = item
                 }

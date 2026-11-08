@@ -37,7 +37,7 @@ struct NameField: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
         .padding(.vertical, 3)
         .onExitCommand(perform: onCancel)
-        .transition(.opacity)
+        .transition(RevealTransition())
     }
 
     private func submit() {

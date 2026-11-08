@@ -961,3 +961,40 @@ struct WeekDayTests {
         #expect(Calendar.current.component(.day, from: ReminderEditing.weekend(startingOn: 6, from: wednesday)) == 30)
     }
 }
+
+@MainActor
+struct SearchAndLinkTests {
+    private func item(_ id: String, _ title: String, notes: String? = nil, tags: [String] = [], parent: String? = nil) -> ReminderItem {
+        var item = ReminderItem(id: id, title: title, listID: "l", listTitle: "L", listColor: .blue)
+        item.notes = notes
+        item.tags = tags
+        item.parentID = parent
+        return item
+    }
+
+    @Test func searchFindsTitlesNotesAndTags() {
+        let section = ReminderSection(list: SmartList.all, items: [
+            item("a", "Call mom"), item("b", "Pay rent", notes: "transfer by Friday"), item("c", "Buy milk", tags: ["errands"]),
+        ])
+        #expect(section.filtered(by: "MOM")?.items.map(\.id) == ["a"])
+        #expect(section.filtered(by: "friday")?.items.map(\.id) == ["b"])
+        #expect(section.filtered(by: "errand")?.items.map(\.id) == ["c"])
+        #expect(section.filtered(by: "nothing") == nil)
+    }
+
+    @Test func aMatchingSubtaskKeepsItsParent() {
+        let section = ReminderSection(list: SmartList.all, items: [
+            item("p", "Trip"), item("s", "Book hotel", parent: "p"), item("x", "Other"),
+        ])
+        #expect(section.filtered(by: "hotel")?.items.map(\.id) == ["p", "s"])
+    }
+
+    @Test func linksNeedNoSchemeButMustBeAddresses() {
+        #expect(QuickAddDraft.url(from: "example.com/page")?.absoluteString == "https://example.com/page")
+        #expect(QuickAddDraft.url(from: " https://example.com ")?.absoluteString == "https://example.com")
+        #expect(QuickAddDraft.url(from: "localhost:3000") != nil)
+        #expect(QuickAddDraft.url(from: "not a link") == nil)
+        #expect(QuickAddDraft.url(from: "word") == nil)
+        #expect(QuickAddDraft.url(from: "") == nil)
+    }
+}

@@ -11,6 +11,10 @@ import SwiftUI
 /// a limit you set by dragging the handle under it.
 struct TaskList: View {
     let model: TaskModel
+    /// Only what contains this text is shown, with every list, section and sub-task open.
+    var search = ""
+    /// The row the arrow keys are on, by the key of `ReminderSection.key(for:)`.
+    var highlight: String?
     let onStart: (ReminderItem) -> Void
 
     @AppStorage(DefaultsKey.dropdownMaxHeight) private var maxHeight = defaultMaxHeight
@@ -54,10 +58,15 @@ struct TaskList: View {
             emptyState
         } else {
             VStack(spacing: 0) {
-                ScrollView {
-                    sections
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
-                        .background(ThinScrollers(handle: scrollHandle))
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        sections
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                            .background(ThinScrollers(handle: scrollHandle))
+                    }
+                    .onChange(of: highlight) { _, key in
+                        if let key { withAnimation(.snappy(duration: 0.25)) { proxy.scrollTo(key) } }
+                    }
                 }
                 .frame(height: visibleHeight)
                 .animation(.snappy(duration: 0.4), value: visibleHeight)
@@ -74,9 +83,18 @@ struct TaskList: View {
         }
     }
 
+    private var searching: Bool { !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    /// The lists as shown: all of them, or only what the search finds.
+    private var shown: [ReminderSection] { model.displayedSections(matching: search) }
+
     private var sections: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(model.sections.enumerated()), id: \.element.id) { index, section in
+            if searching, shown.isEmpty {
+                Text("No matches").font(.callout).foregroundStyle(.tertiary)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+            }
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, section in
                 listBlock(index: index, section: section)
             }
         }
@@ -89,7 +107,7 @@ struct TaskList: View {
 
     @ViewBuilder private func listBlock(index: Int, section: ReminderSection) -> some View {
         if index > 0 { Divider().padding(.vertical, 6) }
-        let collapsed = model.collapsedListIDs.contains(section.id)
+        let collapsed = model.collapsedListIDs.contains(section.id) && !searching
         if renamingList == section.id {
             NameField(initial: section.list.title, placeholder: "List name", onSubmit: { name in
                 model.renameList(section.list, to: name)
@@ -129,7 +147,7 @@ struct TaskList: View {
             }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.headers[section.id] = $0 }
             .opacity(listDrag?.listID == section.id ? 0 : 1)   // the carried copy is drawn on top
-            .simultaneousGesture(listDragGesture(section))
+            .simultaneousGesture(listDragGesture(section), including: searching ? .subviews : .all)
         }
         if deletingList == section.id {
             ListDeleteConfirmation(title: section.list.title, onCancel: { withAnimation(Self.quick) { deletingList = nil } }) {
@@ -149,7 +167,8 @@ struct TaskList: View {
             }, onCancel: { withAnimation(Self.quick) { addingSectionTo = nil } })
         }
         if !collapsed {
-            let entries = section.entries(foldedParents: model.collapsedParentIDs, foldedSections: model.collapsedSectionIDs)
+            let entries = section.entries(foldedParents: searching ? [] : model.collapsedParentIDs,
+                                          foldedSections: searching ? [] : model.collapsedSectionIDs)
             if entries.isEmpty {
                 Text(section.list.id == SmartList.today.id ? "Nothing due today" : "No reminders")
                     .font(.callout).foregroundStyle(.tertiary)
@@ -174,7 +193,7 @@ struct TaskList: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.headings[section.id + "|" + info.id] = $0 }
                         .onDisappear { frames.headings[section.id + "|" + info.id] = nil }
                         .opacity(sectionDrag?.section.id == info.id && sectionDrag?.listID == section.id ? 0 : 1)
-                        .simultaneousGesture(sectionDragGesture(info, in: section))
+                        .simultaneousGesture(sectionDragGesture(info, in: section), including: searching ? .subviews : .all)
                     }
                     if addingTaskTo == section.id + "|" + info.id {
                         TaskComposer(model: model, listID: section.list.id, sectionID: info.id, placeholder: "New reminder in \(info.title)") {
@@ -192,11 +211,13 @@ struct TaskList: View {
                 case .item(let item):
                     let carried = drag?.item.id == item.id && drag?.sectionID == section.id
                     TaskRow(item: item, model: model, start: { if !justDragged { onStart(item) } }, done: { model.completeOnly(item) },
-                            onEditing: { if $0 { editingIDs.insert(item.id) } else { editingIDs.remove(item.id) } })
+                            onEditing: { if $0 { editingIDs.insert(item.id) } else { editingIDs.remove(item.id) } },
+                            highlighted: highlight == section.key(for: item))
+                        .id(section.key(for: item))
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.rows[section.id + "|" + item.id] = $0 }
                         .onDisappear { frames.rows[section.id + "|" + item.id] = nil; editingIDs.remove(item.id) }
                         .opacity(carried ? 0 : 1)
-                        .simultaneousGesture(dragGesture(item, in: section), including: editingIDs.contains(item.id) ? .subviews : .all)
+                        .simultaneousGesture(dragGesture(item, in: section), including: editingIDs.contains(item.id) || searching ? .subviews : .all)
                         .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)),
                                                 removal: .opacity.combined(with: .scale(scale: 0.95))))
                 }
@@ -507,7 +528,7 @@ struct TaskList: View {
 
     /// Changes whenever a section or task appears, disappears or moves, to drive the list animation.
     private var layoutKey: [String] {
-        model.sections.map { section in
+        shown.map { section in
             model.collapsedListIDs.contains(section.id) ? section.id : section.id + ":" + section.items.map(\.id).joined(separator: ",")
         }
     }

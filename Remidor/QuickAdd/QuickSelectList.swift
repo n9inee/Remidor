@@ -195,12 +195,15 @@ struct QuickSelectList: View {
                             TaskDetails(item: item)
                                 .padding(.leading, 34).padding(.trailing, 8).padding(.bottom, 6)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
+                                .transition(RevealTransition())
                         }
                     }
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
-                .animation(.snappy(duration: 0.4), value: entries.map(\.id))
+                // Rows are swapped as you type, so only opening and closing a row's own part is animated.
+                .animation(Motion.reveal, value: expanded)
+                .animation(Motion.reveal, value: editing)
+                .animation(Motion.reveal, value: deleting)
             }
             // A ScrollView has no intrinsic height here, so it is sized to its content, up to a limit.
             .frame(height: min(contentHeight ?? CGFloat(rows.count) * (rowHeight + 1), maxHeight))

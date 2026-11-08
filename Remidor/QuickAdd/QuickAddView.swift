@@ -14,6 +14,11 @@ struct QuickAddView: View {
     var onAdded: (() -> Void)?
     /// When set, open tasks are listed under the box and one can be chosen with ↑ ↓ and Return.
     var onPickTask: ((ReminderItem) -> Void)?
+    /// For the dropdown, whose list is outside this view: move the highlight by one row (false when there is none),
+    /// start the highlighted one (false when nothing is highlighted), and check it off.
+    var onMoveRow: ((Int) -> Bool)?
+    var onOpenRow: (() -> Bool)?
+    var onCompleteRow: (() -> Void)?
 
     @State private var draft: QuickAddDraft
     @State private var showCalendar = false
@@ -26,12 +31,17 @@ struct QuickAddView: View {
     /// The smart list picked with the chips under the box, if any.
     @State private var listFilter: String?
 
-    init(model: TaskModel, autofocus: Bool = false, onAdded: (() -> Void)? = nil, onPickTask: ((ReminderItem) -> Void)? = nil) {
+    init(model: TaskModel, autofocus: Bool = false, draft: QuickAddDraft? = nil, onAdded: (() -> Void)? = nil,
+         onPickTask: ((ReminderItem) -> Void)? = nil, onMoveRow: ((Int) -> Bool)? = nil,
+         onOpenRow: (() -> Bool)? = nil, onCompleteRow: (() -> Void)? = nil) {
         self.model = model
         self.autofocus = autofocus
         self.onAdded = onAdded
         self.onPickTask = onPickTask
-        _draft = State(initialValue: QuickAddDraft(model: model))
+        self.onMoveRow = onMoveRow
+        self.onOpenRow = onOpenRow
+        self.onCompleteRow = onCompleteRow
+        _draft = State(initialValue: draft ?? QuickAddDraft(model: model))
     }
 
     var body: some View {
@@ -46,8 +56,10 @@ struct QuickAddView: View {
                     draft.apply(suggestion)
                     focusTrigger += 1
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(RevealTransition())
             }
+
+            DetailFields(draft: draft, onSubmit: submit)
 
             // Always shown, so the box keeps its size when the first character is typed.
             QuickAddControls(draft: draft, showCalendar: $showCalendar)
@@ -58,34 +70,35 @@ struct QuickAddView: View {
                 Divider().padding(.vertical, 2)
                 QuickSelectList(model: model, rows: rows, selection: $selection, expanded: $expanded, editing: $editing,
                                 onActivate: activate, onComplete: model.completeOnly, onRefocus: { focusTrigger += 1 })
-                    .transition(.opacity)
+                    .transition(RevealTransition())
             }
 
             // The dropdown shows its own banner under the list; the hotkey box shows it here.
             if onPickTask != nil {
                 if let completed = model.undoBannerItem {
                     UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(RevealTransition())
                 }
                 if let message = model.errorMessage {
                     ErrorBanner(message: message, onDismiss: model.dismissError)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(RevealTransition())
                 }
             }
         }
         .background(undoShortcut)
         .background(rowShortcuts)
-        .animation(.snappy(duration: 0.44), value: model.undoBannerItem?.id)
-        .animation(.snappy(duration: 0.44), value: model.errorMessage)
+        .animation(Motion.reveal, value: model.undoBannerItem?.id)
+        .animation(Motion.reveal, value: model.errorMessage)
         .onChange(of: draft.text) { selection = 0 }
         .onChange(of: rows.count) { selection = min(selection, max(rows.count - 1, 0)) }
         .onChange(of: model.lists.map(\.id)) { draft.reparse() }
         .onAppear {
             if autofocus { Task { @MainActor in focusTrigger += 1 } }
         }
-        .animation(.snappy(duration: 0.44), value: suggestions.map(\.id))
-        .animation(.snappy(duration: 0.44), value: draft.pickedTags)
-        .animation(.snappy(duration: 0.44), value: showCalendar)
+        .animation(Motion.reveal, value: suggestions.map(\.id))
+        .animation(Motion.reveal, value: draft.pickedTags)
+        .animation(Motion.reveal, value: showCalendar)
+        .animation(Motion.reveal, value: draft.hasText)
     }
 
     /// Today, Scheduled, Flagged and the other smart lists, to look at one list on its own. Picking the
@@ -177,6 +190,7 @@ struct QuickAddView: View {
             if !draft.title.isEmpty {
                 Button("Add", action: submit)
                     .controlSize(.small)
+                    .disabled(draft.linkIsInvalid)
                     .transition(.opacity)
             }
         }
@@ -215,12 +229,14 @@ struct QuickAddView: View {
 
     /// Shift + Return checks off the highlighted task.
     private func completeHighlighted() {
+        if onPickTask == nil { onCompleteRow?(); return }
         let rows = quickRows(suggestions: draft.suggestions)
         guard rows.indices.contains(selection), case .task(let item, _) = rows[selection] else { return }
         model.completeOnly(item)
     }
 
     private func move(_ delta: Int) -> Bool {
+        if onPickTask == nil { return onMoveRow?(delta) ?? false }
         let count = quickRows(suggestions: draft.suggestions).count
         guard count > 0 else { return false }
         selection = min(max(selection + delta, 0), count - 1)
@@ -244,6 +260,8 @@ struct QuickAddView: View {
         let absorbed = absorbTyped()
         // Only metadata was typed, so there is no reminder to add yet and the highlighted row isn't meant.
         if absorbed && draft.title.isEmpty { return }
+        // Nothing to add: in the dropdown, Return starts the highlighted reminder.
+        if onPickTask == nil, draft.title.isEmpty, onOpenRow?() == true { return }
 
         let rows = quickRows(suggestions: draft.suggestions)
         if rows.indices.contains(selection) { activate(rows[selection]) } else { addCurrent() }

@@ -38,6 +38,11 @@ final class QuickAddDraft {
     var pickedListID: String?
     var pickedTags: [String] = []
     var pickedRecurrence: Recurrence?
+    /// The notes and the link, in the two small boxes under the title.
+    var notes = ""
+    var urlText = ""
+    /// The link a reminder being edited started with, which is kept as it is while its text isn't touched.
+    @ObservationIgnored private var originalURL: URL?
 
     /// While the text is exactly this, nothing in it counts as typed. Used when editing a reminder, so
     /// that words in its title, like "at 5", don't change its date until the text is touched.
@@ -69,6 +74,9 @@ final class QuickAddDraft {
         pickedFlag = item.isFlagged
         pickedListID = item.listID
         pickedRecurrence = item.recurrence
+        notes = item.notes ?? ""
+        originalURL = item.url
+        urlText = item.url?.absoluteString ?? ""
         reparse()
     }
 
@@ -88,6 +96,25 @@ final class QuickAddDraft {
 
     var realLists: [ReminderList] { model.lists.filter { !$0.isSmart } }
     var title: String { parsed.title }
+    /// Whether anything but spaces has been typed, which is when the notes and link boxes show.
+    var hasText: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var link: URL? {
+        if let originalURL, urlText == originalURL.absoluteString { return originalURL }
+        return Self.url(from: urlText)
+    }
+    /// Something is typed in the link box that isn't a web address.
+    var linkIsInvalid: Bool { !urlText.trimmingCharacters(in: .whitespaces).isEmpty && link == nil }
+
+    /// A web address as typed: "example.com/page" works without the https://. Nil when it isn't one.
+    static func url(from text: String) -> URL? {
+        let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty, !typed.contains(where: \.isWhitespace) else { return nil }
+        let candidate = typed.contains("://") ? typed : "https://" + typed
+        guard let url = URL(string: candidate), let host = url.host, !host.isEmpty,
+              host.contains(".") || host == "localhost" else { return nil }
+        return url
+    }
     var due: Date? { parsed.due ?? pickedDate }
     var hasTime: Bool { parsed.due != nil ? parsed.hasTime : pickedHasTime }
     var priority: Int? { parsed.priority ?? pickedPriority }
@@ -107,10 +134,11 @@ final class QuickAddDraft {
     /// What to save. A reminder being edited keeps its old title when the box was emptied.
     func request(fallbackTitle: String?) -> NewReminder? {
         let title = title.isEmpty ? (fallbackTitle ?? "") : title
-        guard !title.isEmpty else { return nil }
+        guard !title.isEmpty, !linkIsInvalid else { return nil }
         let fullTitle = ([title] + pickedTags.map { "#" + $0 }).joined(separator: " ")
         return NewReminder(title: fullTitle, due: due, hasTime: hasTime, priority: priority, flagged: flagged,
-                           listID: list?.id, recurrence: recurrence)
+                           listID: list?.id, recurrence: recurrence,
+                           notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty, url: link)
     }
 
     /// Call when the available lists change, since list names are part of the parse.
@@ -135,6 +163,9 @@ final class QuickAddDraft {
         pickedListID = nil
         pickedTags = []
         pickedRecurrence = nil
+        notes = ""
+        urlText = ""
+        originalURL = nil
     }
 
     // MARK: Autocomplete

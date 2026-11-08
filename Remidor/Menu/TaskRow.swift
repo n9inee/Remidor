@@ -16,7 +16,11 @@ struct TaskRow: View {
     let done: () -> Void
     /// Tells the list when the edit box opens or closes.
     var onEditing: (Bool) -> Void = { _ in }
+    /// The row the arrow keys are on.
+    var highlighted = false
     @State private var hovering = false
+    /// A long title opens up in full once the pointer has rested on it for a moment, not as it passes over.
+    @State private var showsFull = false
     @State private var expanded = false
     @State private var confirmingDelete = false
     @State private var editing = false
@@ -48,19 +52,29 @@ struct TaskRow: View {
                 if expanded {
                     TaskDetails(item: item)
                         .padding(.leading, 30).padding(.trailing, 8).padding(.bottom, 8)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .transition(RevealTransition())
                 }
             }
         }
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(hovering ? 0.08 : 0)))
+        .background(RoundedRectangle(cornerRadius: 7).fill(highlighted ? Color.accentColor.opacity(0.18) : Color.primary.opacity(hovering ? 0.08 : 0)))
         .padding(.leading, CGFloat(item.depth) * 20)
         .onHover { hovering = $0 }
         .contextMenu { contextMenu }
-        .animation(.snappy(duration: 0.4), value: expanded)
-        .animation(.snappy(duration: 0.4), value: confirmingDelete)
-        .animation(.snappy(duration: 0.4), value: editing)
+        .animation(Motion.reveal, value: expanded)
+        .animation(Motion.reveal, value: confirmingDelete)
+        .animation(Motion.reveal, value: editing)
         .onChange(of: editing) { _, now in onEditing(now) }
         .animation(.snappy(duration: 0.3), value: hovering)
+        .animation(.snappy(duration: 0.3), value: highlighted)
+        .animation(Motion.reveal, value: showsFull)
+        .task(id: hovering) {
+            if hovering {
+                try? await Task.sleep(for: .milliseconds(350))
+                if !Task.isCancelled { showsFull = true }
+            } else {
+                showsFull = false
+            }
+        }
     }
 
     @ViewBuilder private var contextMenu: some View {
@@ -95,7 +109,7 @@ struct TaskRow: View {
             CompletionRing(color: item.listColor, size: item.depth > 0 ? 14 : 16, action: done)
             VStack(alignment: .leading, spacing: 0) {
                 Text(rowTitle(item, markColor: item.listColor))
-                    .lineLimit(hovering || expanded ? nil : 1)
+                    .lineLimit(showsFull || expanded ? nil : 1)
                     .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
                 caption

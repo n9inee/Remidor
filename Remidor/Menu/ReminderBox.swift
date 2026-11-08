@@ -49,6 +49,8 @@ struct ReminderBox: View {
                 }
             }
 
+            DetailFields(draft: draft, onSubmit: confirm)
+
             QuickAddControls(draft: draft, showCalendar: $showCalendar)
 
             HStack {
@@ -57,14 +59,15 @@ struct ReminderBox: View {
                 Button(confirmTitle, action: confirm)
                     .controlSize(.small)
                     .buttonStyle(.borderedProminent)
-                    .disabled(isBusy || (fallbackTitle == nil && draft.title.isEmpty && draft.text.trimmingCharacters(in: .whitespaces).isEmpty))
+                    .disabled(isBusy || draft.linkIsInvalid || (fallbackTitle == nil && draft.title.isEmpty && draft.text.trimmingCharacters(in: .whitespaces).isEmpty))
             }
         }
         .padding(.vertical, 4)
         .onExitCommand(perform: onCancel)
-        .animation(.snappy(duration: 0.3), value: showCalendar)
-        .animation(.snappy(duration: 0.3), value: suggestions.map(\.id))
-        .transition(.opacity)
+        .animation(Motion.reveal, value: showCalendar)
+        .animation(Motion.reveal, value: draft.hasText)
+        .animation(Motion.reveal, value: suggestions.map(\.id))
+        .transition(RevealTransition())
     }
 
     /// Takes in the open suggestion and everything recognized in the text, so it all ends up on the chips.

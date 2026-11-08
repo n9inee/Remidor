@@ -94,6 +94,25 @@ struct ReminderSection: Identifiable {
     var id: String { list.id }
     /// How many of its reminders are late.
     var overdueCount: Int { items.filter { isOverdue($0) }.count }
+
+    /// Identifies a reminder as shown under this list, since one can show up under several.
+    func key(for item: ReminderItem) -> String { id + "|" + item.id }
+
+    /// Only the reminders whose title, notes or tags contain the text, each with the parent it sits under. Nil
+    /// when none do.
+    func filtered(by query: String) -> ReminderSection? {
+        let hits = Set(items.filter { item in
+            item.title.localizedStandardContains(query)
+                || (item.notes?.localizedStandardContains(query) ?? false)
+                || item.tags.contains { $0.localizedStandardContains(query) }
+        }.map(\.id))
+        let parents = Set(items.filter { hits.contains($0.id) }.compactMap(\.parentID))
+        let kept = items.filter { hits.contains($0.id) || parents.contains($0.id) }
+        guard !kept.isEmpty else { return nil }
+        // Only the sections that still have something in them.
+        let used = Set(kept.compactMap(\.sectionID))
+        return ReminderSection(list: list, items: kept, sections: sections.filter { used.contains($0.id) })
+    }
 }
 
 /// Built-in lists that EventKit doesn't expose; Remidor recreates them from due dates.
@@ -145,6 +164,8 @@ struct NewReminder {
     let flagged: Bool
     let listID: String?
     var recurrence: Recurrence?
+    var notes: String?
+    var url: URL?
 }
 
 /// The focus-timer flow shown in the menu bar.
