@@ -62,9 +62,7 @@ struct QuickAddView: View {
             DetailFields(draft: draft, onSubmit: submit)
 
             // Always shown, so the box keeps its size when the first character is typed.
-            QuickAddControls(draft: draft, showCalendar: $showCalendar)
-
-            if onPickTask != nil { listChips }
+            QuickAddControls(draft: draft, showCalendar: $showCalendar, trailing: onPickTask != nil ? AnyView(listChips) : nil)
 
             if !rows.isEmpty {
                 Divider().padding(.vertical, 2)
@@ -75,11 +73,11 @@ struct QuickAddView: View {
 
             // The dropdown shows its own banner under the list; the hotkey box shows it here.
             if onPickTask != nil {
-                if let notice = model.undoNotice {
+                if let notice = model.shownNotice {
                     NoticeBanner(notice: notice, onUndo: model.undoNoticeAction)
                         .transition(RevealTransition())
                 }
-                if let completed = model.undoBannerItem {
+                if let completed = model.shownCompletion {
                     UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
                         .transition(RevealTransition())
                 }
@@ -87,12 +85,15 @@ struct QuickAddView: View {
                     ErrorBanner(message: message, onDismiss: model.dismissError)
                         .transition(RevealTransition())
                 }
+                if !rows.isEmpty {
+                    KeyHint()
+                }
             }
         }
         .background(undoShortcut)
         .background(rowShortcuts)
-        .animation(Motion.reveal, value: model.undoBannerItem?.id)
-        .animation(Motion.reveal, value: model.undoNotice)
+        .animation(Motion.reveal, value: model.shownCompletion?.id)
+        .animation(Motion.reveal, value: model.shownNotice)
         .animation(Motion.reveal, value: model.errorMessage)
         .onChange(of: draft.text) { selection = 0 }
         .onChange(of: rows.count) { selection = min(selection, max(rows.count - 1, 0)) }
@@ -123,7 +124,6 @@ struct QuickAddView: View {
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
-            Spacer(minLength: 0)
         }
         .animation(.easeOut(duration: 0.12), value: listFilter)
     }
@@ -167,9 +167,7 @@ struct QuickAddView: View {
         Button("Undo") { model.undoLast() }
             .keyboardShortcut("z", modifiers: .command)
             // Not while the banner shows a repeating task, which can't be undone: ⌘Z must not undo an older one.
-            .disabled(draft.text.isEmpty == false
-                      || (model.undoNotice == nil && (model.recentlyCompleted.isEmpty
-                          || (model.undoBannerItem != nil && !model.undoBannerCanUndo))))
+            .disabled(draft.text.isEmpty == false || !model.canUndoLast)
             .frame(width: 0, height: 0)
             .opacity(0)
             .accessibilityHidden(true)

@@ -14,6 +14,8 @@ struct CompletionRing: View {
     var checkColor: Color = .white
     var size: CGFloat = 16
     var hitSize: CGFloat = 22
+    /// What VoiceOver says, which names the task so each ring in a list is told apart.
+    var label = "Mark as done"
     let action: () -> Void
 
     @State private var hovering = false
@@ -36,6 +38,6 @@ struct CompletionRing: View {
         .onHover { hovering = $0 }
         .animation(.snappy(duration: 0.3), value: hovering)
         .help("Mark as done")
-        .accessibilityLabel("Mark as done")
+        .accessibilityLabel(label)
     }
 }

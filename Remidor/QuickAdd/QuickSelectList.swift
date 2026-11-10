@@ -192,7 +192,7 @@ struct QuickSelectList: View {
                             }
                             .transition(.opacity.combined(with: .scale(scale: 0.97)))
                         case .details(let item, _):
-                            TaskDetails(item: item)
+                            TaskDetails(item: item, model: model)
                                 .padding(.leading, 34).padding(.trailing, 8).padding(.bottom, 6)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .transition(RevealTransition())
@@ -261,7 +261,7 @@ private struct QuickRowView: View {
             case .task(let item, _):
                 Color.clear.frame(width: CGFloat(item.depth) * 16, height: 1)
                 CompletionRing(color: selected ? .white : item.listColor, checkColor: selected ? .accentColor : .white,
-                               size: 12, hitSize: 20) { onComplete(item) }
+                               size: 12, hitSize: 20, label: "Mark “\(item.title)” as done") { onComplete(item) }
                 Text(rowTitle(item, markColor: selected ? .white : item.listColor))
                     .lineLimit(1).truncationMode(.tail).foregroundStyle(primary)
                 Spacer(minLength: 0)

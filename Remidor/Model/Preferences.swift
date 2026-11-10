@@ -22,6 +22,7 @@ enum DefaultsKey {
     static let weekStart = "weekStartDay"
     static let weekendStart = "weekendStartDay"
     static let dateOrder = "typedDateOrder"
+    static let showMenuBarCount = "showMenuBarCount"
     static let dropdownMaxHeight = "dropdownMaxHeight"
     static let checkForUpdates = "checkForUpdates"
     static let lastUpdateCheck = "lastUpdateCheck"

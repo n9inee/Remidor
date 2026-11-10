@@ -11,10 +11,12 @@ import SwiftUI
 struct QuickAddControls: View {
     @Bindable var draft: QuickAddDraft
     @Binding var showCalendar: Bool
+    /// Shown at the right end of the buttons when everything fits on one line, and under them when it doesn't.
+    var trailing: AnyView?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            buttons
+            buttonRow
             if !draft.pickedTags.isEmpty {
                 tagChips.transition(RevealTransition())
             }
@@ -24,12 +26,24 @@ struct QuickAddControls: View {
         }
     }
 
+    @ViewBuilder private var buttonRow: some View {
+        if let trailing {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { buttons; trailing }
+                VStack(alignment: .leading, spacing: 6) { buttons; trailing }
+            }
+        } else {
+            buttons
+        }
+    }
+
     private var buttons: some View {
         HStack(spacing: 6) {
             Button { showCalendar.toggle() } label: {
                 Chip(icon: "calendar", label: dateLabel, active: draft.due != nil)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(draft.due == nil ? "Date" : "Date, \(dateLabel)")
 
             Menu {
                 CheckedItem(title: "Never", checked: draft.recurrence == nil) { draft.setRecurrence(nil) }
@@ -43,6 +57,7 @@ struct QuickAddControls: View {
                 Chip(icon: "repeat", label: draft.recurrence?.shortLabel ?? "", active: draft.recurrence != nil)
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .accessibilityLabel(draft.recurrence == nil ? "Repeat" : "Repeat, \(draft.recurrence?.shortLabel ?? "")")
             .help("Repeat. You can also type \"every sunday\" or \"every 2 weeks\".")
 
             Menu {
@@ -55,6 +70,7 @@ struct QuickAddControls: View {
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
             .help("Priority")
+            .accessibilityLabel(priorityLabel.isEmpty ? "Priority" : "Priority, \(priorityLabel)")
 
             Button { draft.toggleFlag() } label: {
                 Chip(icon: draft.flagged ? "flag.fill" : "flag", label: "", active: draft.flagged, tint: .orange)
@@ -78,6 +94,7 @@ struct QuickAddControls: View {
                 .background(Capsule().fill(Color.primary.opacity(0.08)))
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .accessibilityLabel("List, \(draft.list?.title ?? "none")")
             }
 
             Spacer(minLength: 0)

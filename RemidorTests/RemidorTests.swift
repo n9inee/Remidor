@@ -998,3 +998,82 @@ struct SearchAndLinkTests {
         #expect(QuickAddDraft.url(from: "") == nil)
     }
 }
+
+
+struct NotesFormattingTests {
+    private func apply(_ edit: NotesFormatting.Edit?, to text: String) -> String? {
+        edit.map { (text as NSString).replacingCharacters(in: $0.range, with: $0.replacement) }
+    }
+
+    @Test func returnOnABulletStartsTheNextOne() {
+        let text = "* milk"
+        let edit = NotesFormatting.returnEdit(in: text, caret: (text as NSString).length)
+        #expect(apply(edit, to: text) == "* milk\n* ")
+    }
+
+    @Test func returnKeepsTheIndentAndTheMarker() {
+        let text = "intro\n  - one"
+        let edit = NotesFormatting.returnEdit(in: text, caret: (text as NSString).length)
+        #expect(apply(edit, to: text) == "intro\n  - one\n  - ")
+    }
+
+    @Test func returnOnAnEmptyBulletEndsTheList() {
+        let text = "* a\n* "
+        let edit = NotesFormatting.returnEdit(in: text, caret: (text as NSString).length)
+        #expect(apply(edit, to: text) == "* a\n")
+    }
+
+    @Test func returnOnAPlainLineIsLeftAlone() {
+        #expect(NotesFormatting.returnEdit(in: "just text", caret: 9) == nil)
+        #expect(NotesFormatting.returnEdit(in: "*bold*", caret: 6) == nil)
+    }
+
+    @Test func bulletsAreOnlyDrawnNotChanged() {
+        #expect(NotesFormatting.displayed("* a\n- b\n  * c\nx - y") == "• a\n• b\n  • c\nx - y")
+    }
+}
+
+struct UndoStackTests {
+    private func notice(_ text: String) -> UndoNotice { UndoNotice(message: text, icon: "trash") }
+
+    @Test func newestComesFirstAndOlderOnesWait() {
+        var stack = UndoStack()
+        var undone: [String] = []
+        let first = notice("first"), second = notice("second")
+        stack.push(first) { undone.append("first") }
+        stack.push(second) { undone.append("second") }
+        #expect(stack.newest == second)
+        stack.popNewest()?.undo()
+        #expect(stack.newest == first)
+        stack.popNewest()?.undo()
+        #expect(undone == ["second", "first"])
+        #expect(stack.newest == nil)
+        #expect(stack.popNewest() == nil)
+    }
+
+    @Test func anExpiredEntryLeavesTheOthersAlone() {
+        var stack = UndoStack()
+        let old = notice("old"), recent = notice("recent")
+        stack.push(old) {}
+        stack.push(recent) {}
+        #expect(stack.remove(id: old.id) != nil)
+        #expect(stack.remove(id: old.id) == nil)
+        #expect(stack.newest == recent)
+        #expect(stack.entries.count == 1)
+    }
+}
+
+struct MenuBarCountTests {
+    @Test func countsWhatIsDueTodayOrLate() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        func item(_ id: String, days: Int?) -> ReminderItem {
+            ReminderItem(id: id, title: id, listID: "l", listTitle: "L", listColor: .blue,
+                         due: days.flatMap { calendar.date(byAdding: .day, value: $0, to: today) })
+        }
+        let items = [item("late", days: -3), item("today", days: 0), item("tomorrow", days: 1), item("undated", days: nil)]
+        let end = calendar.date(byAdding: .day, value: 1, to: today)!
+        #expect(TaskModel.dueCount(in: items, before: end) == 2)
+        #expect(TaskModel.dueCount(in: [], before: end) == 0)
+    }
+}

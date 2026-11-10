@@ -146,7 +146,7 @@ private struct QuickAddPanelContent: View {
         }
         .animation(.snappy(duration: 0.44), value: chosen)
         .padding(12)
-        .frame(width: 400)
+        .frame(width: 430)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
         // The window can be taller than the content for a moment; keep the content pinned to the top.

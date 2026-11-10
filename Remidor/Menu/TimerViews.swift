@@ -70,6 +70,9 @@ struct RunningTimerView: View {
                     .animation(.snappy(duration: 0.9), value: Int(model.remaining))
             }
             .frame(width: 118, height: 118)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(model.isPaused ? "Time left, paused" : "Time left")
+            .accessibilityValue(formatRemaining(model.remaining))
             HStack {
                 Button("Stop", action: model.cancel)
                 Button(model.isPaused ? "Resume" : "Pause") {
@@ -108,6 +111,9 @@ struct BreakTimerView: View {
                     .animation(.snappy(duration: 0.9), value: Int(model.remaining))
             }
             .frame(width: 118, height: 118)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Break time left")
+            .accessibilityValue(formatRemaining(model.remaining))
             HStack {
                 Button("Stop", action: model.cancel)
                 Spacer()

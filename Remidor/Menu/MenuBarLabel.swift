@@ -14,12 +14,23 @@ struct MenuBarLabel: View {
     var body: some View {
         switch model.phase {
         case .idle:
-            Image(systemName: "checklist")
+            if model.showMenuBarCount, model.menuBarCount > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "checklist")
+                    Text("\(model.menuBarCount)").monospacedDigit()
+                }
+            } else {
+                Image(systemName: "checklist")
+            }
         case .choosing(let item):
             Text(shortened(item.title))
         case .running(let item, _):
-            Text("\(shortened(item.title))  \(formatRemaining(model.remaining))")
-                .monospacedDigit()
+            // A paused timer shows a pause sign, so the frozen time doesn't look like a hung app.
+            HStack(spacing: 4) {
+                if model.isPaused { Image(systemName: "pause.fill") }
+                Text("\(shortened(item.title))  \(formatRemaining(model.remaining))")
+                    .monospacedDigit()
+            }
         case .onBreak:
             HStack(spacing: 4) {
                 Image(systemName: "cup.and.saucer")

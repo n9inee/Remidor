@@ -9,7 +9,7 @@ import SwiftUI
 
 /// "Deleted …  Undo ⌘Z": the banner for an edit or deletion that can still be taken back.
 struct NoticeBanner: View {
-    let notice: TaskModel.UndoNotice
+    let notice: UndoNotice
     let onUndo: () -> Void
 
     var body: some View {

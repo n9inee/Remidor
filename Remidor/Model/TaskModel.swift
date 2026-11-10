@@ -34,6 +34,13 @@ final class TaskModel {
     var now = Date()
     var runTotal: TimeInterval = 1
 
+    /// How many reminders are due today or late, for the menu bar.
+    var menuBarCount = 0
+    /// Whether the menu bar shows that number next to its icon. Off unless chosen in Settings.
+    var showMenuBarCount = UserDefaults.standard.bool(forKey: DefaultsKey.showMenuBarCount) {
+        didSet { UserDefaults.standard.set(showMenuBarCount, forKey: DefaultsKey.showMenuBarCount) }
+    }
+
     /// Time left on a paused timer. Nil while it runs.
     var pausedRemaining: TimeInterval?
     var isPaused: Bool { pausedRemaining != nil }
@@ -54,18 +61,15 @@ final class TaskModel {
     var recentlyCompleted: [ReminderItem] = []
     /// The latest completion, shown in a banner for a few seconds.
     var undoBannerItem: ReminderItem?
+    /// When that banner appeared, to tell whether an edit came before or after it.
+    var completionBannerAt = Date.distantPast
     /// False for repeating tasks. Reminders keeps the original, moves it to its next date and logs a
     /// separate completed copy, so there is nothing safe to un-complete.
     var undoBannerCanUndo = true
     /// The latest edit or deletion, shown in a banner with an Undo for a few seconds.
     var undoNotice: UndoNotice?
-    struct UndoNotice: Equatable {
-        let id = UUID()
-        let message: String
-        let icon: String
-    }
     /// How long an edit or deletion can be undone, in seconds.
-    static let undoWindow = 10
+    static let undoWindow = 5
 
     // MARK: Errors
 
@@ -221,8 +225,8 @@ final class TaskModel {
     /// so a stale fetch can't bring them back.
     @ObservationIgnored private var pendingRemovals = [String: Date]()
     @ObservationIgnored private var undoExpiry: Task<Void, Never>?
-    @ObservationIgnored private var noticeUndo: (() -> Void)?
-    @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
+    @ObservationIgnored private var undoStack = UndoStack()
+    @ObservationIgnored private var noticeTimers: [UUID: Task<Void, Never>] = [:]
     /// Reminders deleted by the user that are only hidden for now, so the deletion can still be undone. They are
     /// removed from Reminders when the undo window ends, or when the app quits. Keyed by the deleted reminder's id.
     @ObservationIgnored private var pendingDeletes: [String: (ids: [String], title: String, timer: Task<Void, Never>)] = [:]
@@ -319,6 +323,30 @@ final class TaskModel {
 
         allTags = Self.knownTags(in: items)
         sections = makeSections(from: visible, listSections: sectionLookups.mapValues(\.allSections))
+        menuBarCount = Self.dueCount(in: visible, before: ReminderEditing.startOfTomorrow())
+        endTimerIfTaskIsGone()
+    }
+
+    /// How many open reminders are due today or late, which is what the Today list holds.
+    nonisolated static func dueCount(in items: [ReminderItem], before end: Date) -> Int {
+        items.filter { ($0.due ?? .distantFuture) < end }.count
+    }
+
+    /// The task a timer is set up or running for, if any.
+    private var timerItem: ReminderItem? {
+        switch phase {
+        case .idle: nil
+        case .choosing(let item), .running(let item, _), .finished(let item), .onBreak(let item, _): item
+        }
+    }
+
+    /// Stops the timer when its task was checked off or deleted somewhere else, instead of leaving a countdown for
+    /// something that no longer exists.
+    private func endTimerIfTaskIsGone() {
+        guard let item = timerItem else { return }
+        if !hiddenForDelete.contains(item.id), let stored = reminder(withID: item.id), !stored.isCompleted { return }
+        cancel()
+        report("“\(item.title)” was checked off or deleted, so its timer stopped.")
     }
 
     private func updateLists(from calendars: [EKCalendar]) {
@@ -913,6 +941,13 @@ final class TaskModel {
         scheduleRefresh()
     }
 
+    /// Replaces a reminder's notes. Empty text clears them.
+    func setNotes(_ item: ReminderItem, to notes: String) {
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        guard trimmed != item.notes else { return }
+        change(item, "change the notes of") { $0.notes = trimmed }
+    }
+
     /// Sets a reminder's priority: 0 none, 1 high, 5 medium, 9 low.
     func setPriority(_ item: ReminderItem, to priority: Int) {
         let old = item.priority
@@ -937,30 +972,48 @@ final class TaskModel {
         return saved
     }
 
-    /// Shows "message  Undo" for a few seconds. Only one notice at a time, and it replaces the completion banner.
+    /// Shows "message  Undo" for a few seconds. Several can wait at once: the banner shows the newest, and
+    /// when that one is undone or runs out the one before it comes back.
     private func postNotice(_ message: String, icon: String, undo: @escaping () -> Void) {
-        undoExpiry?.cancel()
-        undoBannerItem = nil
-        undoNotice = UndoNotice(message: message, icon: icon)
-        noticeUndo = undo
-        noticeExpiry?.cancel()
-        noticeExpiry = Task { [weak self] in
+        let notice = UndoNotice(message: message, icon: icon)
+        undoStack.push(notice, undo: undo)
+        undoNotice = undoStack.newest
+        noticeTimers[notice.id] = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.undoWindow))
-            if !Task.isCancelled { self?.dismissNotice() }
+            if !Task.isCancelled { self?.expireNotice(notice.id) }
         }
     }
 
-    private func dismissNotice() {
-        noticeExpiry?.cancel()
-        undoNotice = nil
-        noticeUndo = nil
+    private func expireNotice(_ id: UUID) {
+        noticeTimers[id] = nil
+        undoStack.remove(id: id)
+        undoNotice = undoStack.newest
     }
 
-    /// Takes back the edit or deletion the banner is showing.
+    /// Takes back the newest edit or deletion that can still be undone.
     func undoNoticeAction() {
-        let undo = noticeUndo
-        dismissNotice()
-        undo?()
+        guard let entry = undoStack.popNewest() else { return }
+        noticeTimers.removeValue(forKey: entry.notice.id)?.cancel()
+        undoNotice = undoStack.newest
+        entry.undo()
+    }
+
+    /// The edit banner, unless a task was checked off since: then its banner is the one shown.
+    var shownNotice: UndoNotice? {
+        guard let notice = undoNotice else { return nil }
+        return undoBannerItem == nil || notice.created > completionBannerAt ? notice : nil
+    }
+
+    /// The completion banner, unless an edit came after it.
+    var shownCompletion: ReminderItem? {
+        shownNotice == nil ? undoBannerItem : nil
+    }
+
+    /// Whether ⌘Z has something to take back. A repeating task that was just checked off can't be undone, and
+    /// then ⌘Z must not reach back to an older one.
+    var canUndoLast: Bool {
+        if let notice = undoNotice, notice.created > completionBannerAt { return true }
+        return !recentlyCompleted.isEmpty && !(undoBannerItem != nil && !undoBannerCanUndo)
     }
 
     /// Flags or unflags a reminder.
@@ -1111,7 +1164,7 @@ final class TaskModel {
             recentlyCompleted.insert(recent, at: 0)
             recentlyCompleted = Array(recentlyCompleted.prefix(5))
         }
-        dismissNotice()
+        completionBannerAt = Date()
         undoBannerItem = recent
         undoBannerCanUndo = !item.isRepeating
         undoExpiry?.cancel()
@@ -1123,7 +1176,7 @@ final class TaskModel {
 
     /// Undoes the most recent completion. Repeating it steps back through the last five.
     func undoLast() {
-        if undoNotice != nil { return undoNoticeAction() }
+        if let notice = undoNotice, notice.created > completionBannerAt { return undoNoticeAction() }
         if let latest = recentlyCompleted.first { undoComplete(latest) }
     }
 

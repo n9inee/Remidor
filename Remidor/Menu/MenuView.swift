@@ -33,8 +33,8 @@ struct MenuView: View {
         .animation(.snappy(duration: 0.5), value: model.phase)
         .animation(.snappy(duration: 0.4), value: creatingList)
         .animation(.snappy(duration: 0.4), value: searching)
-        .animation(.snappy(duration: 0.5), value: model.undoBannerItem?.id)
-        .animation(.snappy(duration: 0.5), value: model.undoNotice)
+        .animation(.snappy(duration: 0.5), value: model.shownCompletion?.id)
+        .animation(.snappy(duration: 0.5), value: model.shownNotice)
         .animation(.snappy(duration: 0.5), value: model.errorMessage)
         .animation(.snappy(duration: 0.5), value: updates.availableUpdate)
         .onAppear {
@@ -143,12 +143,14 @@ struct MenuView: View {
                     minutes = model.defaultMinutes
                     model.select(item)
                 }
+                // Once the arrow keys are on a reminder, say what the keys do.
+                if highlight != nil { KeyHint() }
                 if creatingList { NewListForm(model: model) { creatingList = false } }
-                if let notice = model.undoNotice {
+                if let notice = model.shownNotice {
                     NoticeBanner(notice: notice, onUndo: model.undoNoticeAction)
                         .transition(RevealTransition())
                 }
-                if let completed = model.undoBannerItem {
+                if let completed = model.shownCompletion {
                     UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
                         .transition(RevealTransition())
                 }
@@ -230,6 +232,7 @@ private struct FooterButton: View {
         }
         .buttonStyle(HoverButtonStyle(horizontal: 8, vertical: 3))
         .help(title)
+        .accessibilityLabel(title)
     }
 }
 

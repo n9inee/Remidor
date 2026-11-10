@@ -65,6 +65,12 @@ struct SettingsView: View {
             .frame(width: 270)
 
             VStack(spacing: 14) {
+                GroupBox("Menu bar") {
+                    Toggle("Show how many are due today", isOn: $model.showMenuBarCount)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(6)
+                        .help("A number next to the icon: what is due today, plus what is late")
+                }
                 GroupBox("Timer") {
                     VStack(spacing: 8) {
                         Text("Default duration").frame(maxWidth: .infinity, alignment: .leading)

@@ -50,7 +50,7 @@ struct TaskRow: View {
                     .padding(.leading, 20).padding(.trailing, 6)
                 }
                 if expanded {
-                    TaskDetails(item: item)
+                    TaskDetails(item: item, model: model)
                         .padding(.leading, 30).padding(.trailing, 8).padding(.bottom, 8)
                         .transition(RevealTransition())
                 }
@@ -106,7 +106,7 @@ struct TaskRow: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            CompletionRing(color: item.listColor, size: item.depth > 0 ? 14 : 16, action: done)
+            CompletionRing(color: item.listColor, size: item.depth > 0 ? 14 : 16, label: "Mark “\(item.title)” as done", action: done)
             VStack(alignment: .leading, spacing: 0) {
                 Text(rowTitle(item, markColor: item.listColor))
                     .lineLimit(showsFull || expanded ? nil : 1)
@@ -116,7 +116,6 @@ struct TaskRow: View {
             }
 
             Spacer(minLength: 0)
-            if hovering, item.due.map(Calendar.current.isDateInToday) ?? false { snoozeButton }
             if item.childCount > 0 { subtaskToggle }
             if item.isFlagged {
                 Image(systemName: "flag.fill").font(.caption).foregroundStyle(.orange)
@@ -164,29 +163,6 @@ struct TaskRow: View {
         .accessibilityLabel(folded ? "Show \(item.childCount) sub-tasks" : "Hide \(item.childCount) sub-tasks")
     }
 
-    /// One click moves the reminder to tomorrow, keeping its time; the arrow offers the other days.
-    private var snoozeButton: some View {
-        let choices = model.rescheduleChoices
-        return Menu {
-            ForEach(choices, id: \.title) { choice in
-                Button(choice.title) { model.setDay(item, to: choice.day) }
-            }
-        } label: {
-            Image(systemName: "moon.zzz")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-        } primaryAction: {
-            if choices.count > 1 { model.setDay(item, to: choices[1].day) }
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .frame(width: 22, height: 22)
-        .help("Snooze to tomorrow")
-        .accessibilityLabel("Snooze to tomorrow")
-        .transition(.opacity)
-    }
-
     /// Shows or hides the notes and details.
     private var infoButton: some View {
         Button { expanded.toggle() } label: {
@@ -206,16 +182,68 @@ struct TaskRow: View {
 /// Everything known about a reminder: notes with clickable links, URL and key facts.
 struct TaskDetails: View {
     let item: ReminderItem
+    let model: TaskModel
+    @State private var editingNotes = false
+    @State private var draftNotes = ""
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let notes = item.notes {
-                Text(linkified(notes))
+    /// Reminders keeps notes as plain text, with line breaks but no formatting, so that is what is edited here.
+    /// Web addresses in them still turn into links when they are shown.
+    private var notesView: some View {
+        Group {
+            if editingNotes {
+                VStack(alignment: .trailing, spacing: 4) {
+                    NotesEditor(text: $draftNotes, onCancel: cancelNotes, onEnd: endNotes)
+                        .frame(height: 90)
+                        .padding(4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary))
+                    HStack(spacing: 6) {
+                        Text("⌘↩ saves").font(.caption2).foregroundStyle(.tertiary)
+                        Button("Cancel", action: cancelNotes).controlSize(.small)
+                        Button("Save", action: saveNotes)
+                            .controlSize(.small)
+                            .buttonStyle(.borderedProminent)
+                            .keyboardShortcut(.return, modifiers: .command)
+                    }
+                }
+                // Leaving the box, or the panel closing, keeps what was typed instead of losing it.
+                .onDisappear(perform: endNotes)
+            } else if let notes = item.notes {
+                Text(linkified(NotesFormatting.displayed(notes)))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: startNotes)
+                    .help("Click to edit the notes")
+            } else {
+                Button(action: startNotes) {
+                    Label("Add notes", systemImage: "note.text").font(.callout).foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
             }
+        }
+    }
+
+    private func startNotes() {
+        draftNotes = item.notes ?? ""
+        editingNotes = true
+    }
+
+    private func saveNotes() {
+        editingNotes = false
+        model.setNotes(item, to: draftNotes)
+    }
+
+    private func cancelNotes() { editingNotes = false }
+
+    private func endNotes() {
+        if editingNotes { saveNotes() }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            notesView
             if let url = item.url {
                 Link(destination: url) {
                     Label(url.absoluteString, systemImage: "link").lineLimit(2).font(.callout)

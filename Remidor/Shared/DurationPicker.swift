@@ -40,26 +40,29 @@ struct DurationPicker: View {
                 .background(Capsule().fill(selected ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(minutes % 60 == 0 ? "\(minutes / 60) hour" : "\(minutes) minutes")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func box(value: Binding<Int>, unit: String, step: Int) -> some View {
         VStack(spacing: 0) {
-            chevron("chevron.up") { nudge(1, by: step) }
+            chevron("chevron.up", label: "More \(unit == "h" ? "hours" : "minutes")") { nudge(1, by: step) }
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 TextField("", value: value, format: .number)
                     .textFieldStyle(.plain)
                     .multilineTextAlignment(.trailing)
                     .font(.system(size: 20, weight: .medium).monospacedDigit())
                     .frame(width: 26)
+                    .accessibilityLabel(unit == "h" ? "Hours" : "Minutes")
                 Text(unit).font(.caption).foregroundStyle(.secondary).frame(width: 9, alignment: .leading)
             }
             .frame(width: 64, height: 32)
             .background(RoundedRectangle(cornerRadius: 7).fill(.quaternary))
-            chevron("chevron.down") { nudge(-1, by: step) }
+            chevron("chevron.down", label: "Fewer \(unit == "h" ? "hours" : "minutes")") { nudge(-1, by: step) }
         }
     }
 
-    private func chevron(_ name: String, action: @escaping () -> Void) -> some View {
+    private func chevron(_ name: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: name)
                 .font(.system(size: 9, weight: .bold))
@@ -68,6 +71,7 @@ struct DurationPicker: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     /// Hour chevrons add or remove a full hour. Minute chevrons jump to the next quarter-hour, so a
