@@ -174,4 +174,6 @@ enum Phase: Equatable {
     case choosing(ReminderItem)
     case running(ReminderItem, end: Date)
     case finished(ReminderItem)
+    /// A rest after a work session. When it ends the same task is up for another session.
+    case onBreak(ReminderItem, end: Date)
 }

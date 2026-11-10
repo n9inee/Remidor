@@ -22,6 +22,16 @@ enum TimerNotice {
         }
     }
 
+    static func postBreakOver(for item: ReminderItem) {
+        let content = UNMutableNotificationContent()
+        content.title = "Break's over"
+        content.body = item.title
+        let request = UNNotificationRequest(identifier: "break-finished", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error { log.error("Notification failed: \(error.localizedDescription)") }
+        }
+    }
+
     static func post(for item: ReminderItem) {
         let content = UNMutableNotificationContent()
         content.title = "Time's up"

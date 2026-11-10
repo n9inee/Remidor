@@ -116,12 +116,13 @@ struct TaskRow: View {
             }
 
             Spacer(minLength: 0)
-            if hasDetails || hovering || expanded { infoButton }
+            if hovering, item.due.map(Calendar.current.isDateInToday) ?? false { snoozeButton }
+            if item.childCount > 0 { subtaskToggle }
             if item.isFlagged {
                 Image(systemName: "flag.fill").font(.caption).foregroundStyle(.orange)
                     .accessibilityLabel("Flagged")
             }
-            if item.childCount > 0 { subtaskToggle }
+            if hasDetails || hovering || expanded { infoButton }
         }
         .padding(.vertical, 5).padding(.horizontal, 6)
         .contentShape(Rectangle())
@@ -143,16 +144,47 @@ struct TaskRow: View {
     private var subtaskToggle: some View {
         let folded = model.collapsedParentIDs.contains(item.id)
         return Button { withAnimation(.snappy(duration: 0.4)) { model.toggleSubtasks(of: item) } } label: {
-            Image(systemName: "chevron.down")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(folded ? -90 : 0))
-                .frame(width: 22, height: 22)
-                .contentShape(Rectangle())
+            HStack(spacing: 3) {
+                // A folded parent says how much it hides.
+                if folded {
+                    Text("\(item.childCount)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(folded ? -90 : 0))
+                    .frame(width: 22, height: 22)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(folded ? "Show \(item.childCount) sub-tasks" : "Hide \(item.childCount) sub-tasks")
         .accessibilityLabel(folded ? "Show \(item.childCount) sub-tasks" : "Hide \(item.childCount) sub-tasks")
+    }
+
+    /// One click moves the reminder to tomorrow, keeping its time; the arrow offers the other days.
+    private var snoozeButton: some View {
+        let choices = model.rescheduleChoices
+        return Menu {
+            ForEach(choices, id: \.title) { choice in
+                Button(choice.title) { model.setDay(item, to: choice.day) }
+            }
+        } label: {
+            Image(systemName: "moon.zzz")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+        } primaryAction: {
+            if choices.count > 1 { model.setDay(item, to: choices[1].day) }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .frame(width: 22, height: 22)
+        .help("Snooze to tomorrow")
+        .accessibilityLabel("Snooze to tomorrow")
+        .transition(.opacity)
     }
 
     /// Shows or hides the notes and details.

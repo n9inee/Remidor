@@ -34,6 +34,7 @@ struct MenuView: View {
         .animation(.snappy(duration: 0.4), value: creatingList)
         .animation(.snappy(duration: 0.4), value: searching)
         .animation(.snappy(duration: 0.5), value: model.undoBannerItem?.id)
+        .animation(.snappy(duration: 0.5), value: model.undoNotice)
         .animation(.snappy(duration: 0.5), value: model.errorMessage)
         .animation(.snappy(duration: 0.5), value: updates.availableUpdate)
         .onAppear {
@@ -84,7 +85,8 @@ struct MenuView: View {
         searching.toggle()
         query = ""
         highlight = nil
-        if searching { searchFocused = true }
+        // The field only exists after this update, so ask for focus once it does.
+        if searching { Task { @MainActor in searchFocused = true } }
     }
 
     private var searchField: some View {
@@ -113,7 +115,7 @@ struct MenuView: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
         .background(RoundedRectangle(cornerRadius: 7).fill(.quaternary))
-        .onAppear { searchFocused = true }
+        .onAppear { Task { @MainActor in searchFocused = true } }
         .onExitCommand(perform: toggleSearch)
         .transition(RevealTransition())
     }
@@ -142,6 +144,10 @@ struct MenuView: View {
                     model.select(item)
                 }
                 if creatingList { NewListForm(model: model) { creatingList = false } }
+                if let notice = model.undoNotice {
+                    NoticeBanner(notice: notice, onUndo: model.undoNoticeAction)
+                        .transition(RevealTransition())
+                }
                 if let completed = model.undoBannerItem {
                     UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
                         .transition(RevealTransition())
@@ -162,11 +168,14 @@ struct MenuView: View {
             }
         case .running(let item, _):
             RunningTimerView(model: model, item: item)
+        case .onBreak(let item, _):
+            BreakTimerView(model: model, item: item)
         case .finished(let item):
             FinishedTimerView(
                 item: item, minutes: $minutes,
                 onExtend: { model.start(item, minutes: minutes) },
                 onDone: { model.markDone(item) },
+                onBreak: { model.startBreak(after: item) },
                 onDismiss: model.cancel
             )
             .onAppear { minutes = model.defaultMinutes }
@@ -174,19 +183,13 @@ struct MenuView: View {
     }
 
     private var footer: some View {
-        HStack {
-            HStack(spacing: 2) {
-                FooterButton(title: "Settings", icon: "gearshape", iconOnly: true) {
-                    openWindow(id: "settings")
-                    NSApp.activate()
-                }
-                FooterButton(title: "Open Reminders", icon: "checklist", iconOnly: true, action: model.openRemindersApp)
-                if model.hasAccess {
-                    FooterButton(title: "Search", icon: "magnifyingglass", iconOnly: true, action: toggleSearch)
-                    FooterButton(title: "New List", icon: "plus", iconOnly: true) { withAnimation(.snappy(duration: 0.4)) { creatingList.toggle() } }
-                }
+        // Adding, searching and creating lists only make sense on the main screen, not while setting up a timer.
+        let browsing = model.phase == .idle && model.hasAccess
+        return HStack(spacing: 2) {
+            if browsing {
+                FooterButton(title: "New List", icon: "plus", iconOnly: true) { withAnimation(.snappy(duration: 0.4)) { creatingList.toggle() } }
+                FooterButton(title: "Search", icon: "magnifyingglass", iconOnly: true, action: toggleSearch)
             }
-            Spacer()
             if !model.recentlyCompleted.isEmpty {
                 Menu {
                     ForEach(model.recentlyCompleted) { item in
@@ -195,13 +198,20 @@ struct MenuView: View {
                         }
                     }
                 } label: {
-                    Label("Recent", systemImage: "clock.arrow.circlepath").font(.callout)
+                    Image(systemName: "clock.arrow.circlepath").font(.callout)
                 }
                 .menuStyle(.button).buttonStyle(HoverButtonStyle(horizontal: 8, vertical: 3)).menuIndicator(.hidden)
+                .help("Recent")
+                .accessibilityLabel("Recent")
                 .transition(.opacity)
-                Spacer()
             }
-            FooterButton(title: "Quit", icon: "power") { NSApplication.shared.terminate(nil) }
+            Spacer()
+            FooterButton(title: "Open Reminders", icon: "checklist", iconOnly: true, action: model.openRemindersApp)
+            FooterButton(title: "Settings", icon: "gearshape", iconOnly: true) {
+                openWindow(id: "settings")
+                NSApp.activate()
+            }
+            FooterButton(title: "Quit", icon: "power", iconOnly: true) { NSApplication.shared.terminate(nil) }
         }
     }
 }

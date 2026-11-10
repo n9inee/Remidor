@@ -20,6 +20,11 @@ struct MenuBarLabel: View {
         case .running(let item, _):
             Text("\(shortened(item.title))  \(formatRemaining(model.remaining))")
                 .monospacedDigit()
+        case .onBreak:
+            HStack(spacing: 4) {
+                Image(systemName: "cup.and.saucer")
+                Text(formatRemaining(model.remaining)).monospacedDigit()
+            }
         case .finished(let item):
             HStack(spacing: 4) {
                 Text(shortened(item.title))

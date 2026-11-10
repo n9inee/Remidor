@@ -7,6 +7,30 @@
 
 import SwiftUI
 
+/// "Deleted …  Undo ⌘Z": the banner for an edit or deletion that can still be taken back.
+struct NoticeBanner: View {
+    let notice: TaskModel.UndoNotice
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: notice.icon).foregroundStyle(.secondary)
+            Text(notice.message).lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 4)
+            Button(action: onUndo) {
+                HStack(spacing: 5) {
+                    Label("Undo", systemImage: "arrow.uturn.backward").font(.callout.weight(.medium))
+                    Text("⌘Z").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.08)))
+    }
+}
+
 /// "Completed …  Undo ⌘Z", shown for a few seconds after a task is checked off. A repeating task
 /// can't be undone, so its banner just says so.
 struct UndoBanner: View {

@@ -80,6 +80,6 @@ struct DeleteConfirmation: View {
         let also = subtasks == 0 ? "" : subtasks == 1 ? " Its sub-task goes too." : " Its \(subtasks) sub-tasks go too."
         return (item.isRepeating
                 ? "This also removes all its repeats from Reminders."
-                : "It will be removed from Reminders.") + also + " This can't be undone."
+                : "It will be removed from Reminders.") + also + " You can undo it for a few seconds."
     }
 }

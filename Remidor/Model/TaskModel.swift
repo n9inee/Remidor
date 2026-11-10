@@ -34,9 +34,18 @@ final class TaskModel {
     var now = Date()
     var runTotal: TimeInterval = 1
 
+    /// Time left on a paused timer. Nil while it runs.
+    var pausedRemaining: TimeInterval?
+    var isPaused: Bool { pausedRemaining != nil }
+    /// How long a break lasts, in minutes.
+    static let breakMinutes = 5
+
     var remaining: TimeInterval {
-        if case .running(_, let end) = phase { return max(0, end.timeIntervalSince(now)) }
-        return 0
+        if let pausedRemaining { return pausedRemaining }
+        switch phase {
+        case .running(_, let end), .onBreak(_, let end): return max(0, end.timeIntervalSince(now))
+        default: return 0
+        }
     }
 
     // MARK: Undo state
@@ -48,6 +57,15 @@ final class TaskModel {
     /// False for repeating tasks. Reminders keeps the original, moves it to its next date and logs a
     /// separate completed copy, so there is nothing safe to un-complete.
     var undoBannerCanUndo = true
+    /// The latest edit or deletion, shown in a banner with an Undo for a few seconds.
+    var undoNotice: UndoNotice?
+    struct UndoNotice: Equatable {
+        let id = UUID()
+        let message: String
+        let icon: String
+    }
+    /// How long an edit or deletion can be undone, in seconds.
+    static let undoWindow = 10
 
     // MARK: Errors
 
@@ -203,6 +221,12 @@ final class TaskModel {
     /// so a stale fetch can't bring them back.
     @ObservationIgnored private var pendingRemovals = [String: Date]()
     @ObservationIgnored private var undoExpiry: Task<Void, Never>?
+    @ObservationIgnored private var noticeUndo: (() -> Void)?
+    @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
+    /// Reminders deleted by the user that are only hidden for now, so the deletion can still be undone. They are
+    /// removed from Reminders when the undo window ends, or when the app quits. Keyed by the deleted reminder's id.
+    @ObservationIgnored private var pendingDeletes: [String: (ids: [String], title: String, timer: Task<Void, Never>)] = [:]
+    @ObservationIgnored private var hiddenForDelete = Set<String>()
     @ObservationIgnored private var errorExpiry: Task<Void, Never>?
     @ObservationIgnored private var isRefreshing = false
     @ObservationIgnored private var refreshQueued = false
@@ -210,6 +234,10 @@ final class TaskModel {
     @ObservationIgnored private var tickLoop: Task<Void, Never>?
 
     init() {
+        // A deletion still waiting out its undo window must not be lost when the app quits.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flushDeletes() }
+        }
         NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
@@ -287,7 +315,7 @@ final class TaskModel {
         // Drop a pending removal once a fetch no longer returns the reminder, or after 10 seconds.
         let fetchedIDs = Set(items.map(\.id))
         pendingRemovals = pendingRemovals.filter { fetchedIDs.contains($0.key) && Date().timeIntervalSince($0.value) < 10 }
-        let visible = items.filter { pendingRemovals[$0.id] == nil }
+        let visible = items.filter { pendingRemovals[$0.id] == nil && !hiddenForDelete.contains($0.id) }
 
         allTags = Self.knownTags(in: items)
         sections = makeSections(from: visible, listSections: sectionLookups.mapValues(\.allSections))
@@ -840,7 +868,11 @@ final class TaskModel {
 
     /// Sets or clears a reminder's due date.
     func setDue(_ item: ReminderItem, to date: Date?, hasTime: Bool) {
-        change(item, "change the date of") { ReminderEditing.setDue(date, hasTime: hasTime, on: $0) }
+        let (oldDue, oldHasTime) = (item.due, item.dueHasTime)
+        guard change(item, "change the date of", { ReminderEditing.setDue(date, hasTime: hasTime, on: $0) }) else { return }
+        postNotice(date == nil ? "Removed the date of “\(item.title)”" : "Rescheduled “\(item.title)”", icon: "calendar") { [weak self] in
+            self?.change(item, "restore the date of") { ReminderEditing.setDue(oldDue, hasTime: oldHasTime, on: $0) }
+        }
     }
 
     /// Moves a reminder to another day, keeping its time of day, unless that time has already gone by on the new
@@ -856,31 +888,79 @@ final class TaskModel {
         let late = items.filter { isOverdue($0) }
         guard !late.isEmpty else { return }
         var failed = 0
+        var moved: [ReminderItem] = []
         for item in late {
             guard let reminder = reminder(withID: item.id) else { failed += 1; continue }
-            let moved = ReminderEditing.rescheduling(item.due, hasTime: item.dueHasTime, toDay: day)
-            ReminderEditing.setDue(moved.date, hasTime: moved.hasTime, on: reminder)
-            if !save(reminder, action: "reschedule") { failed += 1 }
+            let new = ReminderEditing.rescheduling(item.due, hasTime: item.dueHasTime, toDay: day)
+            ReminderEditing.setDue(new.date, hasTime: new.hasTime, on: reminder)
+            if save(reminder, action: "reschedule") { moved.append(item) } else { failed += 1 }
         }
         if failed > 0 { report("Couldn't reschedule \(failed) of \(late.count) reminders.") }
+        if !moved.isEmpty {
+            let what = moved.count == 1 ? "“\(moved[0].title)”" : "\(moved.count) reminders"
+            postNotice("Rescheduled \(what)", icon: "calendar") { [weak self] in
+                guard let self else { return }
+                var failed = 0
+                for old in moved {
+                    guard let reminder = self.reminder(withID: old.id) else { failed += 1; continue }
+                    ReminderEditing.setDue(old.due, hasTime: old.dueHasTime, on: reminder)
+                    if !self.save(reminder, action: "restore") { failed += 1 }
+                }
+                if failed > 0 { self.report("Couldn't restore \(failed) of \(moved.count) reminders.") }
+                self.scheduleRefresh()
+            }
+        }
         scheduleRefresh()
     }
 
     /// Sets a reminder's priority: 0 none, 1 high, 5 medium, 9 low.
     func setPriority(_ item: ReminderItem, to priority: Int) {
-        change(item, "change the priority of") { $0.priority = priority }
+        let old = item.priority
+        guard change(item, "change the priority of", { $0.priority = priority }) else { return }
+        postNotice("Changed the priority of “\(item.title)”", icon: "exclamationmark") { [weak self] in
+            self?.change(item, "restore the priority of") { $0.priority = old }
+        }
     }
 
     /// Applies an edit to the stored reminder, saves it and reloads.
-    private func change(_ item: ReminderItem, _ action: String, _ edit: (EKReminder) -> Void) {
+    @discardableResult
+    private func change(_ item: ReminderItem, _ action: String, _ edit: (EKReminder) -> Void) -> Bool {
         guard let reminder = reminder(withID: item.id) else {
             report("That reminder no longer exists.")
             scheduleRefresh()
-            return
+            return false
         }
         edit(reminder)
-        if !save(reminder, action: action) { report("Couldn't \(action) “\(item.title)”.") }
+        let saved = save(reminder, action: action)
+        if !saved { report("Couldn't \(action) “\(item.title)”.") }
         scheduleRefresh()
+        return saved
+    }
+
+    /// Shows "message  Undo" for a few seconds. Only one notice at a time, and it replaces the completion banner.
+    private func postNotice(_ message: String, icon: String, undo: @escaping () -> Void) {
+        undoExpiry?.cancel()
+        undoBannerItem = nil
+        undoNotice = UndoNotice(message: message, icon: icon)
+        noticeUndo = undo
+        noticeExpiry?.cancel()
+        noticeExpiry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.undoWindow))
+            if !Task.isCancelled { self?.dismissNotice() }
+        }
+    }
+
+    private func dismissNotice() {
+        noticeExpiry?.cancel()
+        undoNotice = nil
+        noticeUndo = nil
+    }
+
+    /// Takes back the edit or deletion the banner is showing.
+    func undoNoticeAction() {
+        let undo = noticeUndo
+        dismissNotice()
+        undo?()
     }
 
     /// Flags or unflags a reminder.
@@ -890,35 +970,76 @@ final class TaskModel {
             scheduleRefresh()
             return
         }
-        if !ReminderKit.setFlagged(flagged, for: reminder, in: store) {
+        let was = item.isFlagged
+        if ReminderKit.setFlagged(flagged, for: reminder, in: store) {
+            postNotice(flagged ? "Flagged “\(item.title)”" : "Removed the flag from “\(item.title)”", icon: "flag") { [weak self] in
+                guard let self else { return }
+                if let stored = self.reminder(withID: item.id), !ReminderKit.setFlagged(was, for: stored, in: self.store) {
+                    self.report("Couldn't restore the flag of “\(item.title)”.")
+                }
+                self.scheduleRefresh()
+            }
+        } else {
             report("Couldn't \(flagged ? "flag" : "unflag") “\(item.title)”.")
         }
         scheduleRefresh()
     }
 
-    /// Permanently deletes a reminder and its sub-tasks.
+    /// Deletes a reminder and its sub-tasks. They are hidden at once but only removed from Reminders when the undo
+    /// window ends, because Reminders can't bring a deleted reminder back: until then Undo just shows them again.
     func delete(_ item: ReminderItem) {
-        guard let reminder = reminder(withID: item.id) else {
+        guard reminder(withID: item.id) != nil else {
             report("That reminder no longer exists.")
             scheduleRefresh()
             return
         }
-        let subtasks = openItems.filter { $0.parentID == item.id }
-        let hidden = [item.id] + subtasks.map(\.id)
-        for id in hidden { pendingRemovals[id] = Date() }
+        let ids = [item.id] + openItems.filter { $0.parentID == item.id }.map(\.id)
+        hiddenForDelete.formUnion(ids)
+        let gone = Set(ids)
+        sections = sections.compactMap { section in
+            let rest = section.items.filter { !gone.contains($0.id) }
+            return rest.isEmpty ? nil : ReminderSection(list: section.list, items: rest)
+        }
+        let timer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.undoWindow))
+            if !Task.isCancelled { self?.commitDelete(of: item.id) }
+        }
+        pendingDeletes[item.id] = (ids, item.title, timer)
+        postNotice("Deleted “\(item.title)”", icon: "trash") { [weak self] in
+            guard let self, let pending = self.pendingDeletes.removeValue(forKey: item.id) else { return }
+            pending.timer.cancel()
+            self.hiddenForDelete.subtract(pending.ids)
+            self.scheduleRefresh()
+        }
+        scheduleRefresh()
+    }
+
+    /// Removes a hidden reminder and its sub-tasks from Reminders for good.
+    private func commitDelete(of id: String) {
+        guard let pending = pendingDeletes.removeValue(forKey: id) else { return }
+        pending.timer.cancel()
+        // Hidden as removed until a fetch confirms it, so a stale fetch can't bring them back.
+        for id in pending.ids { pendingRemovals[id] = Date() }
         do {
-            for subtask in subtasks {
-                if let stored = self.reminder(withID: subtask.id) { try store.remove(stored, commit: false) }
+            // Sub-tasks first, then the parent.
+            for subId in pending.ids.dropFirst() {
+                if let stored = reminder(withID: subId) { try store.remove(stored, commit: false) }
             }
-            try store.remove(reminder, commit: false)
+            if let stored = reminder(withID: id) { try store.remove(stored, commit: false) }
             try store.commit()
         } catch {
             log.error("Failed to delete reminder: \(error.localizedDescription)")
             store.reset()
-            for id in hidden { pendingRemovals[id] = nil }
-            report("Couldn't delete “\(item.title)”.")
+            for id in pending.ids { pendingRemovals[id] = nil }
+            report("Couldn't delete “\(pending.title)”.")
         }
+        hiddenForDelete.subtract(pending.ids)
         scheduleRefresh()
+    }
+
+    /// Carries out every deletion still waiting, for when the app quits.
+    private func flushDeletes() {
+        for id in Array(pendingDeletes.keys) { commitDelete(of: id) }
     }
 
     /// Opens the task's list in the Reminders app, or just the app if the list can't be opened directly.
@@ -990,6 +1111,7 @@ final class TaskModel {
             recentlyCompleted.insert(recent, at: 0)
             recentlyCompleted = Array(recentlyCompleted.prefix(5))
         }
+        dismissNotice()
         undoBannerItem = recent
         undoBannerCanUndo = !item.isRepeating
         undoExpiry?.cancel()
@@ -1001,6 +1123,7 @@ final class TaskModel {
 
     /// Undoes the most recent completion. Repeating it steps back through the last five.
     func undoLast() {
+        if undoNotice != nil { return undoNoticeAction() }
         if let latest = recentlyCompleted.first { undoComplete(latest) }
     }
 
@@ -1030,6 +1153,7 @@ final class TaskModel {
 
     func select(_ item: ReminderItem) {
         stopTicking()
+        pausedRemaining = nil
         phase = .choosing(item)
     }
 
@@ -1037,12 +1161,48 @@ final class TaskModel {
         runTotal = TimeInterval(max(1, minutes) * 60)
         TimerNotice.askPermission()
         now = Date()
+        pausedRemaining = nil
         phase = .running(item, end: now.addingTimeInterval(runTotal))
         startTicking()
     }
 
+    /// Freezes the countdown. The time left is kept until `resume`.
+    func pause() {
+        guard case .running(_, let end) = phase, pausedRemaining == nil else { return }
+        now = Date()
+        pausedRemaining = max(0, end.timeIntervalSince(now))
+        stopTicking()
+    }
+
+    /// Carries on from where `pause` stopped.
+    func resume() {
+        guard case .running(let item, _) = phase, let left = pausedRemaining else { return }
+        now = Date()
+        pausedRemaining = nil
+        phase = .running(item, end: now.addingTimeInterval(left))
+        startTicking()
+    }
+
+    /// Rests for a few minutes after a session. When the break is over the task is up for another one.
+    func startBreak(after item: ReminderItem) {
+        runTotal = TimeInterval(Self.breakMinutes * 60)
+        TimerNotice.askPermission()
+        now = Date()
+        pausedRemaining = nil
+        phase = .onBreak(item, end: now.addingTimeInterval(runTotal))
+        startTicking()
+    }
+
+    /// Ends a break early and goes back to setting up the next session.
+    func endBreak() {
+        guard case .onBreak(let item, _) = phase else { return }
+        stopTicking()
+        phase = .choosing(item)
+    }
+
     func cancel() {
         stopTicking()
+        pausedRemaining = nil
         phase = .idle
     }
 
@@ -1068,11 +1228,20 @@ final class TaskModel {
 
     private func tick() {
         now = Date()
-        guard case .running(let item, let end) = phase, now >= end else { return }
-        stopTicking()
-        phase = .finished(item)
-        NSSound(named: "Glass")?.play()
-        TimerNotice.post(for: item)
+        switch phase {
+        case .running(let item, let end) where now >= end:
+            stopTicking()
+            phase = .finished(item)
+            NSSound(named: "Glass")?.play()
+            TimerNotice.post(for: item)
+        case .onBreak(let item, let end) where now >= end:
+            stopTicking()
+            phase = .choosing(item)
+            NSSound(named: "Glass")?.play()
+            TimerNotice.postBreakOver(for: item)
+        default:
+            break
+        }
     }
 
     // MARK: EventKit helpers

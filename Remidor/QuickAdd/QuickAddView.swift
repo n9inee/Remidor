@@ -75,6 +75,10 @@ struct QuickAddView: View {
 
             // The dropdown shows its own banner under the list; the hotkey box shows it here.
             if onPickTask != nil {
+                if let notice = model.undoNotice {
+                    NoticeBanner(notice: notice, onUndo: model.undoNoticeAction)
+                        .transition(RevealTransition())
+                }
                 if let completed = model.undoBannerItem {
                     UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
                         .transition(RevealTransition())
@@ -88,6 +92,7 @@ struct QuickAddView: View {
         .background(undoShortcut)
         .background(rowShortcuts)
         .animation(Motion.reveal, value: model.undoBannerItem?.id)
+        .animation(Motion.reveal, value: model.undoNotice)
         .animation(Motion.reveal, value: model.errorMessage)
         .onChange(of: draft.text) { selection = 0 }
         .onChange(of: rows.count) { selection = min(selection, max(rows.count - 1, 0)) }
@@ -159,11 +164,12 @@ struct QuickAddView: View {
     /// ⌘Z undoes the last completed task. While something is typed it is left alone, so it still
     /// undoes typing as usual.
     private var undoShortcut: some View {
-        Button("Undo completion") { model.undoLast() }
+        Button("Undo") { model.undoLast() }
             .keyboardShortcut("z", modifiers: .command)
             // Not while the banner shows a repeating task, which can't be undone: ⌘Z must not undo an older one.
-            .disabled(draft.text.isEmpty == false || model.recentlyCompleted.isEmpty
-                      || (model.undoBannerItem != nil && !model.undoBannerCanUndo))
+            .disabled(draft.text.isEmpty == false
+                      || (model.undoNotice == nil && (model.recentlyCompleted.isEmpty
+                          || (model.undoBannerItem != nil && !model.undoBannerCanUndo))))
             .frame(width: 0, height: 0)
             .opacity(0)
             .accessibilityHidden(true)

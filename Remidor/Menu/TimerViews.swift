@@ -72,11 +72,51 @@ struct RunningTimerView: View {
             .frame(width: 118, height: 118)
             HStack {
                 Button("Stop", action: model.cancel)
+                Button(model.isPaused ? "Resume" : "Pause") {
+                    if model.isPaused { model.resume() } else { model.pause() }
+                }
                 Spacer()
                 Button("Mark done") { model.markDone(item) }
                     .buttonStyle(.borderedProminent)
                     .tint(item.listColor)
             }
+        }
+    }
+}
+
+/// The break countdown. Ending it, or letting it run out, goes back to setting up the next session.
+struct BreakTimerView: View {
+    let model: TaskModel
+    let item: ReminderItem
+
+    var body: some View {
+        let progress = model.runTotal > 0 ? model.remaining / model.runTotal : 0
+        VStack(spacing: 12) {
+            Label("Break", systemImage: "cup.and.saucer")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            ZStack {
+                Circle().stroke(Color.primary.opacity(0.1), lineWidth: 7)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(Color.green, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 1), value: progress)
+                Text(formatRemaining(model.remaining))
+                    .font(.system(size: 26, weight: .medium).monospacedDigit())
+                    .contentTransition(.numericText(countsDown: true))
+                    .animation(.snappy(duration: 0.9), value: Int(model.remaining))
+            }
+            .frame(width: 118, height: 118)
+            HStack {
+                Button("Stop", action: model.cancel)
+                Spacer()
+                Button("Skip break", action: model.endBreak)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+            }
+            Text("Next: \(item.title)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -87,6 +127,7 @@ struct FinishedTimerView: View {
     @Binding var minutes: Int
     let onExtend: () -> Void
     let onDone: () -> Void
+    let onBreak: () -> Void
     let onDismiss: () -> Void
 
     @State private var bounce = false
@@ -104,6 +145,7 @@ struct FinishedTimerView: View {
             DurationPicker(totalMinutes: $minutes)
             HStack {
                 Button("Extend", action: onExtend)
+                Button("Break \(TaskModel.breakMinutes)m", action: onBreak)
                 Spacer()
                 Button("Mark done", action: onDone)
                     .buttonStyle(.borderedProminent)
