@@ -35,6 +35,15 @@ enum NotesFormatting {
         text.replacingOccurrences(of: #"(?m)^([ \t]*)[*-] "#, with: "$1• ", options: .regularExpression)
     }
 
+    /// The first lines of the notes that have anything in them, bullets drawn as `• `, for showing under a title.
+    static func previewLines(_ notes: String?, limit: Int = 2) -> [String] {
+        guard let notes else { return [] }
+        let lines = displayed(notes).split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return Array(lines.prefix(limit))
+    }
+
     /// The indent, bullet character and what follows it, if the line starts with a bullet.
     private static func bullet(in line: String) -> (indent: String, marker: String, rest: String)? {
         let indent = String(line.prefix { $0 == " " || $0 == "\t" })

@@ -1187,3 +1187,21 @@ struct DeferredDeletesTests {
         #expect(deletes.releaseAll().isEmpty)
     }
 }
+
+struct NotesPreviewTests {
+    @Test func showsTheFirstTwoLinesThatHaveText() {
+        #expect(NotesFormatting.previewLines("one\n\n  two  \nthree") == ["one", "two"])
+        #expect(NotesFormatting.previewLines("only") == ["only"])
+        #expect(NotesFormatting.previewLines("a\nb\nc", limit: 1) == ["a"])
+    }
+
+    @Test func nothingToShowForEmptyNotes() {
+        #expect(NotesFormatting.previewLines(nil).isEmpty)
+        #expect(NotesFormatting.previewLines("").isEmpty)
+        #expect(NotesFormatting.previewLines(" \n \n").isEmpty)
+    }
+
+    @Test func bulletsAreDrawnAsBullets() {
+        #expect(NotesFormatting.previewLines("* milk\n- eggs\nmore") == ["• milk", "• eggs"])
+    }
+}

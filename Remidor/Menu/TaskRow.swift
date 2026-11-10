@@ -113,6 +113,8 @@ struct TaskRow: View {
                     .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
                 caption
+                // The notes are shown in full once the details are open.
+                if !expanded { NotesPreview(lines: NotesFormatting.previewLines(item.notes)) }
             }
 
             Spacer(minLength: 0)

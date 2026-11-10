@@ -244,6 +244,11 @@ private struct QuickRowView: View {
 
     @State private var hovering = false
 
+    /// The first lines of the notes, unless the details are open and show them in full.
+    private func preview(of item: ReminderItem) -> [String] {
+        detailsOpen ? [] : NotesFormatting.previewLines(item.notes)
+    }
+
     var body: some View {
         // The highlighted row uses the accent colour with white text, like a native menu.
         let primary: Color = selected ? .white : .primary
@@ -262,8 +267,11 @@ private struct QuickRowView: View {
                 Color.clear.frame(width: CGFloat(item.depth) * 16, height: 1)
                 CompletionRing(color: selected ? .white : item.listColor, checkColor: selected ? .accentColor : .white,
                                size: 12, hitSize: 20, label: "Mark “\(item.title)” as done") { onComplete(item) }
-                Text(rowTitle(item, markColor: selected ? .white : item.listColor))
-                    .lineLimit(1).truncationMode(.tail).foregroundStyle(primary)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(rowTitle(item, markColor: selected ? .white : item.listColor))
+                        .lineLimit(1).truncationMode(.tail).foregroundStyle(primary)
+                    NotesPreview(lines: preview(of: item), color: secondary)
+                }
                 Spacer(minLength: 0)
                 if item.isFlagged {
                     Image(systemName: "flag.fill").font(.caption).foregroundStyle(selected ? .white : .orange)
@@ -301,7 +309,7 @@ private struct QuickRowView: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: height)
+        .frame(height: height + NotesPreview.height(for: row.item.map(preview(of:)) ?? []))
         .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Color.accentColor : .clear))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
