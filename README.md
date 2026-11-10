@@ -26,7 +26,7 @@ A menu bar companion for the macOS **Reminders** app. See what's open at a glanc
 - **Undo.** Checked something off by accident? Use the banner, **⌘Z**, or the Recent menu. Checking off a parent checks off its sub-tasks, and undo brings them back. Changing a date, priority or flag, rescheduling and deleting can be undone for five seconds too, with the banner or **⌘Z**. Do several in a row and each one waits its turn, newest first.
 - **Week and weekend.** The date choices include Weekend and Next Week. They land on the days you pick in Settings, Monday and Saturday unless you change them. Settings also sets whether a typed date like `5.10.` means 5 October or 10 May.
 - **Notes.** Open a reminder's details and click its notes to edit them, with line breaks. Start a line with `*` or `-` and **Return** carries the list on; **Return** on an empty bullet ends it. Lists show as bullets and web addresses as links. Reminders keeps notes as plain text, so what you type is exactly what is saved. **⌘↩** saves, **Esc** cancels, and clicking away keeps what you typed.
-- **Menu bar count.** Turn on "Show how many are due today" in Settings for a number next to the icon: what is due today plus what is late.
+- **Menu bar count.** A number next to the icon shows what is due today plus what is late. Turn it off with "Show how many are due today" in Settings.
 - **Sub-tasks at a glance.** A folded parent shows how many sub-tasks it hides.
 - **Right-click menu.** Open, Edit, Add Sub-task, Date, Priority, Flag, List, Sort Sub-tasks, Move Up, Move Down, Details and Delete. A list's name has its own: New Section, Rename, Sort By and Delete.
 

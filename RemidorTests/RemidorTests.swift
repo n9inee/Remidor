@@ -1077,3 +1077,113 @@ struct MenuBarCountTests {
         #expect(TaskModel.dueCount(in: [], before: end) == 0)
     }
 }
+
+struct CountdownMathTests {
+    private let start = Date(timeIntervalSinceReferenceDate: 1_000_000)
+
+    @Test func remainingCountsDownAndStopsAtZero() {
+        let end = start.addingTimeInterval(1800)
+        #expect(CountdownMath.remaining(until: end, now: start) == 1800)
+        #expect(CountdownMath.remaining(until: end, now: start.addingTimeInterval(600)) == 1200)
+        #expect(CountdownMath.remaining(until: end, now: start.addingTimeInterval(2000)) == 0)
+    }
+
+    @Test func timePausedDoesNotCountAgainstTheTimer() {
+        // 30 minutes, paused with 20 left, left alone for an hour, then resumed.
+        let end = start.addingTimeInterval(1800)
+        let pausedAt = start.addingTimeInterval(600)
+        let left = CountdownMath.remaining(until: end, now: pausedAt)
+        #expect(left == 1200)
+        let resumedAt = pausedAt.addingTimeInterval(3600)
+        let newEnd = CountdownMath.end(after: left, from: resumedAt)
+        #expect(newEnd == resumedAt.addingTimeInterval(1200))
+        #expect(CountdownMath.remaining(until: newEnd, now: resumedAt) == 1200)
+        #expect(!CountdownMath.isFinished(end: newEnd, now: resumedAt))
+    }
+
+    @Test func pausingTwiceKeepsAddingUp() {
+        var end = start.addingTimeInterval(600)
+        var now = start.addingTimeInterval(100)
+        for _ in 0..<2 {
+            let left = CountdownMath.remaining(until: end, now: now)
+            now = now.addingTimeInterval(500)              // paused for a while
+            end = CountdownMath.end(after: left, from: now)
+            now = now.addingTimeInterval(150)              // ran for 150 seconds
+        }
+        // 600 total, 100 + 150 + 150 spent running: 200 left.
+        #expect(CountdownMath.remaining(until: end, now: now) == 200)
+    }
+
+    @Test func pausingAfterTheEndLeavesNothing() {
+        let end = start.addingTimeInterval(60)
+        let late = start.addingTimeInterval(90)
+        #expect(CountdownMath.remaining(until: end, now: late) == 0)
+        #expect(CountdownMath.isFinished(end: end, now: late))
+        #expect(CountdownMath.isFinished(end: end, now: end))
+        #expect(CountdownMath.end(after: -5, from: start) == start)
+    }
+
+    @Test func progressStaysBetweenEmptyAndFull() {
+        #expect(CountdownMath.progress(remaining: 900, total: 1800) == 0.5)
+        #expect(CountdownMath.progress(remaining: 1800, total: 1800) == 1)
+        #expect(CountdownMath.progress(remaining: 0, total: 1800) == 0)
+        #expect(CountdownMath.progress(remaining: 5000, total: 1800) == 1)
+        #expect(CountdownMath.progress(remaining: 10, total: 0) == 0)
+    }
+}
+
+@MainActor
+struct DeferredDeletesTests {
+    @Test func theUndoWindowIsFiveSeconds() {
+        #expect(TaskModel.undoWindow == 5)
+    }
+
+    @Test func aDeletedReminderAndItsSubtasksAreHiddenWhileTheyWait() {
+        var deletes = DeferredDeletes()
+        #expect(deletes.isEmpty)
+        deletes.hold(root: "parent", subtasks: ["a", "b"], title: "Parent")
+        #expect(deletes.hiddenIDs == ["parent", "a", "b"])
+        #expect(!deletes.isEmpty)
+    }
+
+    @Test func undoShowsThemAgainAndLeavesNothingToCarryOut() {
+        var deletes = DeferredDeletes()
+        deletes.hold(root: "parent", subtasks: ["a"], title: "Parent")
+        let undone = deletes.undo(root: "parent")
+        #expect(undone?.ids == ["parent", "a"])
+        #expect(deletes.hiddenIDs.isEmpty)
+        // The timer firing afterwards finds nothing, so nothing is deleted.
+        #expect(deletes.release(root: "parent") == nil)
+    }
+
+    @Test func whenTheTimeIsUpTheBatchIsCarriedOutOnceAndNotUndoable() {
+        var deletes = DeferredDeletes()
+        deletes.hold(root: "x", subtasks: [], title: "X")
+        let batch = deletes.release(root: "x")
+        #expect(batch == DeferredDeletes.Batch(ids: ["x"], title: "X"))
+        #expect(deletes.release(root: "x") == nil)
+        #expect(deletes.undo(root: "x") == nil)
+        #expect(deletes.hiddenIDs.isEmpty)
+    }
+
+    @Test func severalDeletesWaitIndependently() {
+        var deletes = DeferredDeletes()
+        deletes.hold(root: "one", subtasks: ["s1"], title: "One")
+        deletes.hold(root: "two", subtasks: [], title: "Two")
+        _ = deletes.undo(root: "one")
+        #expect(deletes.hiddenIDs == ["two"])
+        deletes.hold(root: "one", subtasks: [], title: "One again")
+        #expect(deletes.hiddenIDs == ["one", "two"])
+    }
+
+    @Test func quittingCarriesOutEverythingStillWaiting() {
+        var deletes = DeferredDeletes()
+        deletes.hold(root: "one", subtasks: ["s"], title: "One")
+        deletes.hold(root: "two", subtasks: [], title: "Two")
+        let all = deletes.releaseAll()
+        #expect(Set(all.map(\.root)) == ["one", "two"])
+        #expect(all.first { $0.root == "one" }?.batch.ids == ["one", "s"])
+        #expect(deletes.isEmpty)
+        #expect(deletes.releaseAll().isEmpty)
+    }
+}

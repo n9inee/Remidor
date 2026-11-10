@@ -36,8 +36,8 @@ final class TaskModel {
 
     /// How many reminders are due today or late, for the menu bar.
     var menuBarCount = 0
-    /// Whether the menu bar shows that number next to its icon. Off unless chosen in Settings.
-    var showMenuBarCount = UserDefaults.standard.bool(forKey: DefaultsKey.showMenuBarCount) {
+    /// Whether the menu bar shows that number next to its icon. On until turned off in Settings.
+    var showMenuBarCount = UserDefaults.standard.object(forKey: DefaultsKey.showMenuBarCount) as? Bool ?? true {
         didSet { UserDefaults.standard.set(showMenuBarCount, forKey: DefaultsKey.showMenuBarCount) }
     }
 
@@ -50,7 +50,7 @@ final class TaskModel {
     var remaining: TimeInterval {
         if let pausedRemaining { return pausedRemaining }
         switch phase {
-        case .running(_, let end), .onBreak(_, let end): return max(0, end.timeIntervalSince(now))
+        case .running(_, let end), .onBreak(_, let end): return CountdownMath.remaining(until: end, now: now)
         default: return 0
         }
     }
@@ -229,8 +229,8 @@ final class TaskModel {
     @ObservationIgnored private var noticeTimers: [UUID: Task<Void, Never>] = [:]
     /// Reminders deleted by the user that are only hidden for now, so the deletion can still be undone. They are
     /// removed from Reminders when the undo window ends, or when the app quits. Keyed by the deleted reminder's id.
-    @ObservationIgnored private var pendingDeletes: [String: (ids: [String], title: String, timer: Task<Void, Never>)] = [:]
-    @ObservationIgnored private var hiddenForDelete = Set<String>()
+    @ObservationIgnored private var deferredDeletes = DeferredDeletes()
+    @ObservationIgnored private var deleteTimers: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var errorExpiry: Task<Void, Never>?
     @ObservationIgnored private var isRefreshing = false
     @ObservationIgnored private var refreshQueued = false
@@ -319,7 +319,8 @@ final class TaskModel {
         // Drop a pending removal once a fetch no longer returns the reminder, or after 10 seconds.
         let fetchedIDs = Set(items.map(\.id))
         pendingRemovals = pendingRemovals.filter { fetchedIDs.contains($0.key) && Date().timeIntervalSince($0.value) < 10 }
-        let visible = items.filter { pendingRemovals[$0.id] == nil && !hiddenForDelete.contains($0.id) }
+        let hidden = deferredDeletes.hiddenIDs
+        let visible = items.filter { pendingRemovals[$0.id] == nil && !hidden.contains($0.id) }
 
         allTags = Self.knownTags(in: items)
         sections = makeSections(from: visible, listSections: sectionLookups.mapValues(\.allSections))
@@ -344,7 +345,7 @@ final class TaskModel {
     /// something that no longer exists.
     private func endTimerIfTaskIsGone() {
         guard let item = timerItem else { return }
-        if !hiddenForDelete.contains(item.id), let stored = reminder(withID: item.id), !stored.isCompleted { return }
+        if !deferredDeletes.hiddenIDs.contains(item.id), let stored = reminder(withID: item.id), !stored.isCompleted { return }
         cancel()
         report("“\(item.title)” was checked off or deleted, so its timer stopped.")
     }
@@ -1046,22 +1047,20 @@ final class TaskModel {
             scheduleRefresh()
             return
         }
-        let ids = [item.id] + openItems.filter { $0.parentID == item.id }.map(\.id)
-        hiddenForDelete.formUnion(ids)
-        let gone = Set(ids)
+        let subtasks = openItems.filter { $0.parentID == item.id }.map(\.id)
+        deferredDeletes.hold(root: item.id, subtasks: subtasks, title: item.title)
+        let gone = Set([item.id] + subtasks)
         sections = sections.compactMap { section in
             let rest = section.items.filter { !gone.contains($0.id) }
             return rest.isEmpty ? nil : ReminderSection(list: section.list, items: rest)
         }
-        let timer = Task { [weak self] in
+        deleteTimers[item.id] = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.undoWindow))
             if !Task.isCancelled { self?.commitDelete(of: item.id) }
         }
-        pendingDeletes[item.id] = (ids, item.title, timer)
         postNotice("Deleted “\(item.title)”", icon: "trash") { [weak self] in
-            guard let self, let pending = self.pendingDeletes.removeValue(forKey: item.id) else { return }
-            pending.timer.cancel()
-            self.hiddenForDelete.subtract(pending.ids)
+            guard let self, self.deferredDeletes.undo(root: item.id) != nil else { return }
+            self.deleteTimers.removeValue(forKey: item.id)?.cancel()
             self.scheduleRefresh()
         }
         scheduleRefresh()
@@ -1069,13 +1068,18 @@ final class TaskModel {
 
     /// Removes a hidden reminder and its sub-tasks from Reminders for good.
     private func commitDelete(of id: String) {
-        guard let pending = pendingDeletes.removeValue(forKey: id) else { return }
-        pending.timer.cancel()
+        deleteTimers.removeValue(forKey: id)?.cancel()
+        guard let batch = deferredDeletes.release(root: id) else { return }
+        carryOut(batch, root: id)
+        scheduleRefresh()
+    }
+
+    private func carryOut(_ batch: DeferredDeletes.Batch, root id: String) {
         // Hidden as removed until a fetch confirms it, so a stale fetch can't bring them back.
-        for id in pending.ids { pendingRemovals[id] = Date() }
+        for id in batch.ids { pendingRemovals[id] = Date() }
         do {
             // Sub-tasks first, then the parent.
-            for subId in pending.ids.dropFirst() {
+            for subId in batch.ids.dropFirst() {
                 if let stored = reminder(withID: subId) { try store.remove(stored, commit: false) }
             }
             if let stored = reminder(withID: id) { try store.remove(stored, commit: false) }
@@ -1083,16 +1087,16 @@ final class TaskModel {
         } catch {
             log.error("Failed to delete reminder: \(error.localizedDescription)")
             store.reset()
-            for id in pending.ids { pendingRemovals[id] = nil }
-            report("Couldn't delete “\(pending.title)”.")
+            for id in batch.ids { pendingRemovals[id] = nil }
+            report("Couldn't delete “\(batch.title)”.")
         }
-        hiddenForDelete.subtract(pending.ids)
-        scheduleRefresh()
     }
 
     /// Carries out every deletion still waiting, for when the app quits.
     private func flushDeletes() {
-        for id in Array(pendingDeletes.keys) { commitDelete(of: id) }
+        for timer in deleteTimers.values { timer.cancel() }
+        deleteTimers.removeAll()
+        for (root, batch) in deferredDeletes.releaseAll() { carryOut(batch, root: root) }
     }
 
     /// Opens the task's list in the Reminders app, or just the app if the list can't be opened directly.
@@ -1223,7 +1227,7 @@ final class TaskModel {
     func pause() {
         guard case .running(_, let end) = phase, pausedRemaining == nil else { return }
         now = Date()
-        pausedRemaining = max(0, end.timeIntervalSince(now))
+        pausedRemaining = CountdownMath.remaining(until: end, now: now)
         stopTicking()
     }
 
@@ -1232,7 +1236,7 @@ final class TaskModel {
         guard case .running(let item, _) = phase, let left = pausedRemaining else { return }
         now = Date()
         pausedRemaining = nil
-        phase = .running(item, end: now.addingTimeInterval(left))
+        phase = .running(item, end: CountdownMath.end(after: left, from: now))
         startTicking()
     }
 
@@ -1282,12 +1286,12 @@ final class TaskModel {
     private func tick() {
         now = Date()
         switch phase {
-        case .running(let item, let end) where now >= end:
+        case .running(let item, let end) where CountdownMath.isFinished(end: end, now: now):
             stopTicking()
             phase = .finished(item)
             NSSound(named: "Glass")?.play()
             TimerNotice.post(for: item)
-        case .onBreak(let item, let end) where now >= end:
+        case .onBreak(let item, let end) where CountdownMath.isFinished(end: end, now: now):
             stopTicking()
             phase = .choosing(item)
             NSSound(named: "Glass")?.play()

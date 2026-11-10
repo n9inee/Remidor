@@ -54,7 +54,7 @@ struct RunningTimerView: View {
     let item: ReminderItem
 
     var body: some View {
-        let progress = model.runTotal > 0 ? model.remaining / model.runTotal : 0
+        let progress = CountdownMath.progress(remaining: model.remaining, total: model.runTotal)
         VStack(spacing: 12) {
             TaskTitleBlock(item: item)
             ZStack {
@@ -93,7 +93,7 @@ struct BreakTimerView: View {
     let item: ReminderItem
 
     var body: some View {
-        let progress = model.runTotal > 0 ? model.remaining / model.runTotal : 0
+        let progress = CountdownMath.progress(remaining: model.remaining, total: model.runTotal)
         VStack(spacing: 12) {
             Label("Break", systemImage: "cup.and.saucer")
                 .font(.headline)
