@@ -12,12 +12,22 @@ import SwiftUI
 struct DetailFields: View {
     @Bindable var draft: QuickAddDraft
     var onSubmit: () -> Void = {}
+    /// Esc inside the notes, for a box that closes on it.
+    var onCancel: (() -> Void)?
+    /// Starts with the keyboard in the notes, for a reminder opened by clicking its notes.
+    var focusNotes = false
 
     var body: some View {
-        if draft.hasText {
+        Reveal(shown: draft.hasText) {
             VStack(spacing: 4) {
                 field("note.text") {
-                    TextField("Notes", text: $draft.notes, axis: .vertical).lineLimit(1...3)
+                    NotesEditor(text: $draft.notes, onCancel: onCancel, onSubmit: onSubmit, focusesOnAppear: focusNotes)
+                        .frame(height: 52)
+                        .overlay(alignment: .topLeading) {
+                            if draft.notes.isEmpty {
+                                Text("Notes").foregroundStyle(.tertiary).padding(.leading, 7).padding(.top, 4).allowsHitTesting(false)
+                            }
+                        }
                 }
                 field("link") {
                     TextField("Link", text: $draft.urlText)
@@ -25,7 +35,6 @@ struct DetailFields: View {
                         .help(draft.linkIsInvalid ? "That isn't a web address." : "A link to keep with the reminder")
                 }
             }
-            .transition(RevealTransition())
         }
     }
 

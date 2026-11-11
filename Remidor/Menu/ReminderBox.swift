@@ -17,6 +17,8 @@ struct ReminderBox: View {
     /// Kept as the title when the box was emptied, for a reminder that already has one.
     var fallbackTitle: String?
     var isBusy = false
+    /// Where the keyboard starts: in the title, or in the notes for a reminder opened by clicking its notes.
+    var initialFocus: EditFocus = .title
     let onConfirm: (NewReminder) -> Void
     let onCancel: () -> Void
 
@@ -32,7 +34,7 @@ struct ReminderBox: View {
                     placeholder: placeholder,
                     tokens: draft.parsed.tokens,
                     color: draft.color(for:),
-                    focusTrigger: focusTrigger,
+                    focusTrigger: initialFocus == .notes && focusTrigger == 1 ? 0 : focusTrigger,
                     onSubmit: confirm,
                     onTab: absorb
                 )
@@ -49,7 +51,7 @@ struct ReminderBox: View {
                 }
             }
 
-            DetailFields(draft: draft, onSubmit: confirm)
+            DetailFields(draft: draft, onSubmit: confirm, onCancel: onCancel, focusNotes: initialFocus == .notes)
 
             QuickAddControls(draft: draft, showCalendar: $showCalendar)
 
@@ -58,6 +60,7 @@ struct ReminderBox: View {
                 Button("Cancel", action: onCancel).controlSize(.small)
                 Button(confirmTitle, action: confirm)
                     .controlSize(.small)
+                    .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)
                     .disabled(isBusy || draft.linkIsInvalid || (fallbackTitle == nil && draft.title.isEmpty && draft.text.trimmingCharacters(in: .whitespaces).isEmpty))
             }
@@ -67,7 +70,7 @@ struct ReminderBox: View {
         .animation(Motion.reveal, value: showCalendar)
         .animation(Motion.reveal, value: draft.hasText)
         .animation(Motion.reveal, value: suggestions.map(\.id))
-        .transition(RevealTransition())
+        .transition(.reveal)
     }
 
     /// Takes in the open suggestion and everything recognized in the text, so it all ends up on the chips.

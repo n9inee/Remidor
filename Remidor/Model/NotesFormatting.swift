@@ -35,6 +35,23 @@ enum NotesFormatting {
         text.replacingOccurrences(of: #"(?m)^([ \t]*)[*-] "#, with: "$1• ", options: .regularExpression)
     }
 
+    /// The notes as shown in a task's details: runs of empty lines shrink to one, and anything past `limit` lines is
+    /// cut with an ellipsis. Editing the notes shows them in full.
+    static func detail(_ notes: String, limit: Int = 6) -> String {
+        var lines: [String] = []
+        for raw in displayed(notes).components(separatedBy: .newlines) {
+            let line = String(raw.reversed().drop { $0 == " " || $0 == "\t" }.reversed())
+            if line.isEmpty {
+                if lines.last?.isEmpty == false { lines.append("") }
+            } else {
+                lines.append(line)
+            }
+        }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        guard lines.count > limit else { return lines.joined(separator: "\n") }
+        return lines.prefix(limit).joined(separator: "\n") + "…"
+    }
+
     /// The first lines of the notes that have anything in them, bullets drawn as `• `, for showing under a title.
     static func previewLines(_ notes: String?, limit: Int = 2) -> [String] {
         guard let notes else { return [] }

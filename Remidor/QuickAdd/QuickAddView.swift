@@ -51,12 +51,11 @@ struct QuickAddView: View {
         VStack(alignment: .leading, spacing: 6) {
             inputField
 
-            if !suggestions.isEmpty {
+            Reveal(shown: !suggestions.isEmpty) {
                 SuggestionList(suggestions: suggestions) { suggestion in
                     draft.apply(suggestion)
                     focusTrigger += 1
                 }
-                .transition(RevealTransition())
             }
 
             DetailFields(draft: draft, onSubmit: submit)
@@ -68,22 +67,22 @@ struct QuickAddView: View {
                 Divider().padding(.vertical, 2)
                 QuickSelectList(model: model, rows: rows, selection: $selection, expanded: $expanded, editing: $editing,
                                 onActivate: activate, onComplete: model.completeOnly, onRefocus: { focusTrigger += 1 })
-                    .transition(RevealTransition())
+                    .transition(.reveal)
             }
 
             // The dropdown shows its own banner under the list; the hotkey box shows it here.
             if onPickTask != nil {
                 if let notice = model.shownNotice {
                     NoticeBanner(notice: notice, onUndo: model.undoNoticeAction)
-                        .transition(RevealTransition())
+                        .transition(.reveal)
                 }
                 if let completed = model.shownCompletion {
                     UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
-                        .transition(RevealTransition())
+                        .transition(.reveal)
                 }
                 if let message = model.errorMessage {
                     ErrorBanner(message: message, onDismiss: model.dismissError)
-                        .transition(RevealTransition())
+                        .transition(.reveal)
                 }
                 if !rows.isEmpty {
                     KeyHint()

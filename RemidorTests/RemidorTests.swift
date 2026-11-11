@@ -1205,3 +1205,13 @@ struct NotesPreviewTests {
         #expect(NotesFormatting.previewLines("* milk\n- eggs\nmore") == ["• milk", "• eggs"])
     }
 }
+
+struct NotesDetailTests {
+    @Test func emptyLinesShrinkAndLongNotesAreCut() {
+        #expect(NotesFormatting.detail("a\n\n\n\nb\n\n") == "a\n\nb")
+        let long = (1...9).map { "line \($0)" }.joined(separator: "\n")
+        #expect(NotesFormatting.detail(long) == (1...6).map { "line \($0)" }.joined(separator: "\n") + "…")
+        #expect(NotesFormatting.detail("- one\n- two") == "• one\n• two")
+        #expect(NotesFormatting.detail("") == "")
+    }
+}

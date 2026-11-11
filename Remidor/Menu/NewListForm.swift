@@ -30,6 +30,6 @@ struct NewListForm: View {
                 if model.createList(named: name, color: TaskModel.listColors[color]) { onDone() }
             }, onCancel: onDone)
         }
-        .transition(RevealTransition())
+        .transition(.reveal)
     }
 }

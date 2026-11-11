@@ -18,12 +18,14 @@ struct TaskRow: View {
     var onEditing: (Bool) -> Void = { _ in }
     /// The row the arrow keys are on.
     var highlighted = false
+    /// False while a drag has only just ended, so letting go isn't taken for a click.
+    var allowsClicks: () -> Bool = { true }
     @State private var hovering = false
     /// A long title opens up in full once the pointer has rested on it for a moment, not as it passes over.
     @State private var showsFull = false
-    @State private var expanded = false
     @State private var confirmingDelete = false
     @State private var editing = false
+    @State private var editFocus = EditFocus.title
     @State private var addingSubtask = false
 
     /// The order of the list this reminder is in, which its sub-tasks follow unless told otherwise.
@@ -31,12 +33,16 @@ struct TaskRow: View {
         model.lists.first { $0.id == item.listID }.map(model.sortOrder(for:)) ?? model.sortOrder
     }
 
-    private var hasDetails: Bool { item.notes != nil || item.url != nil || !item.tags.isEmpty }
+    private func beginEditing(_ focus: EditFocus) {
+        guard allowsClicks() else { return }
+        editFocus = focus
+        editing = true
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if editing {
-                TaskEditor(item: item, model: model) { editing = false }
+                TaskEditor(item: item, model: model, focus: editFocus) { editing = false }
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
             } else if confirmingDelete {
                 DeleteConfirmation(item: item, model: model) { confirmingDelete = false }
@@ -49,18 +55,23 @@ struct TaskRow: View {
                     }
                     .padding(.leading, 20).padding(.trailing, 6)
                 }
-                if expanded {
-                    TaskDetails(item: item, model: model)
+                Reveal(shown: showsFull) {
+                    TaskDetails(item: item, model: model, onEditNotes: { beginEditing(.notes) })
                         .padding(.leading, 30).padding(.trailing, 8).padding(.bottom, 8)
-                        .transition(RevealTransition())
                 }
             }
         }
         .background(RoundedRectangle(cornerRadius: 7).fill(highlighted ? Color.accentColor.opacity(0.18) : Color.primary.opacity(hovering ? 0.08 : 0)))
         .padding(.leading, CGFloat(item.depth) * 20)
-        .onHover { hovering = $0 }
+        // Reports the pointer as it moves, not only when it enters. Entering while the row is still
+        // opening or closing can go unnoticed, which used to leave the row stuck shut.
+        .onContinuousHover { phase in
+            switch phase {
+            case .active: if !hovering { hovering = true }
+            case .ended: hovering = false
+            }
+        }
         .contextMenu { contextMenu }
-        .animation(Motion.reveal, value: expanded)
         .animation(Motion.reveal, value: confirmingDelete)
         .animation(Motion.reveal, value: editing)
         .onChange(of: editing) { _, now in onEditing(now) }
@@ -68,19 +79,25 @@ struct TaskRow: View {
         .animation(.snappy(duration: 0.3), value: highlighted)
         .animation(Motion.reveal, value: showsFull)
         .task(id: hovering) {
-            if hovering {
-                try? await Task.sleep(for: .milliseconds(350))
-                if !Task.isCancelled { showsFull = true }
-            } else {
+            guard hovering else {
                 showsFull = false
+                return
+            }
+            // The details open once the pointer has rested a while, and never while the list is being scrolled.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(750))
+                if Task.isCancelled { return }
+                if ScrollActivity.shared.isIdle(for: 0.4) {
+                    showsFull = true
+                    return
+                }
             }
         }
     }
 
     @ViewBuilder private var contextMenu: some View {
         Button("Open") { model.openInReminders(item) }
-        Button("Edit") { editing = true }
-        Button("Details") { expanded.toggle() }
+        Button("Edit") { beginEditing(.title) }
         // Reminders only goes one level deep, so a sub-task can't have sub-tasks of its own.
         if item.parentID == nil {
             Divider()
@@ -109,12 +126,12 @@ struct TaskRow: View {
             CompletionRing(color: item.listColor, size: item.depth > 0 ? 14 : 16, label: "Mark “\(item.title)” as done", action: done)
             VStack(alignment: .leading, spacing: 0) {
                 Text(rowTitle(item, markColor: item.listColor))
-                    .lineLimit(showsFull || expanded ? nil : 1)
+                    .lineLimit(showsFull ? nil : 1)
                     .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
                 caption
-                // The notes are shown in full once the details are open.
-                if !expanded { NotesPreview(lines: NotesFormatting.previewLines(item.notes)) }
+                // The notes are shown in full once the details open.
+                Reveal(shown: !showsFull) { NotesPreview(lines: NotesFormatting.previewLines(item.notes)) }
             }
 
             Spacer(minLength: 0)
@@ -123,11 +140,12 @@ struct TaskRow: View {
                 Image(systemName: "flag.fill").font(.caption).foregroundStyle(.orange)
                     .accessibilityLabel("Flagged")
             }
-            if hasDetails || hovering || expanded { infoButton }
+            if hovering || highlighted { startButton }
         }
         .padding(.vertical, 5).padding(.horizontal, 6)
         .contentShape(Rectangle())
-        .onTapGesture(perform: start)
+        // A click edits once the details are open, and otherwise goes on to the timer.
+        .onTapGesture { if showsFull { beginEditing(.title) } else { start() } }
     }
 
     @ViewBuilder private var caption: some View {
@@ -165,18 +183,18 @@ struct TaskRow: View {
         .accessibilityLabel(folded ? "Show \(item.childCount) sub-tasks" : "Hide \(item.childCount) sub-tasks")
     }
 
-    /// Shows or hides the notes and details.
-    private var infoButton: some View {
-        Button { expanded.toggle() } label: {
-            Image(systemName: expanded ? "info.circle.fill" : "info.circle")
-                .font(.system(size: 13))
+    /// Goes on to choosing how long to work on the reminder.
+    private var startButton: some View {
+        Button(action: start) {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(expanded ? "Hide details" : "Show details")
-        .accessibilityLabel(expanded ? "Hide details" : "Show details")
+        .help("Start a timer")
+        .accessibilityLabel("Start a timer for “\(item.title)”")
         .transition(.opacity)
     }
 }
@@ -185,6 +203,8 @@ struct TaskRow: View {
 struct TaskDetails: View {
     let item: ReminderItem
     let model: TaskModel
+    /// When set, a click on the notes calls this instead of editing them right here.
+    var onEditNotes: (() -> Void)?
     @State private var editingNotes = false
     @State private var draftNotes = ""
 
@@ -194,12 +214,12 @@ struct TaskDetails: View {
         Group {
             if editingNotes {
                 VStack(alignment: .trailing, spacing: 4) {
-                    NotesEditor(text: $draftNotes, onCancel: cancelNotes, onEnd: endNotes)
+                    NotesEditor(text: $draftNotes, onCancel: cancelNotes, onEnd: endNotes, onSubmit: saveNotes)
                         .frame(height: 90)
                         .padding(4)
                         .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary))
                     HStack(spacing: 6) {
-                        Text("⌘↩ saves").font(.caption2).foregroundStyle(.tertiary)
+                        Text("↩ saves · ⇧↩ new line").font(.caption2).foregroundStyle(.tertiary)
                         Button("Cancel", action: cancelNotes).controlSize(.small)
                         Button("Save", action: saveNotes)
                             .controlSize(.small)
@@ -210,7 +230,7 @@ struct TaskDetails: View {
                 // Leaving the box, or the panel closing, keeps what was typed instead of losing it.
                 .onDisappear(perform: endNotes)
             } else if let notes = item.notes {
-                Text(linkified(NotesFormatting.displayed(notes)))
+                Text(linkified(NotesFormatting.detail(notes)))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -228,6 +248,7 @@ struct TaskDetails: View {
     }
 
     private func startNotes() {
+        if let onEditNotes { onEditNotes(); return }
         draftNotes = item.notes ?? ""
         editingNotes = true
     }
@@ -252,21 +273,21 @@ struct TaskDetails: View {
                 }
             }
             VStack(alignment: .leading, spacing: 3) {
-                fact("List", item.listTitle)
                 if let due = item.due {
                     fact("Due", item.dueHasTime
                          ? due.formatted(date: .abbreviated, time: .shortened)
                          : due.formatted(date: .abbreviated, time: .omitted))
                 }
-                if item.priority > 0 {
-                    fact("Priority", item.priority <= 4 ? "High" : item.priority == 5 ? "Medium" : "Low")
-                }
-                if item.isFlagged { fact("Flag", "Flagged") }
                 if let repeats = item.recurrence { fact("Repeats", repeats.label) }
                 if let created = item.created {
                     fact("Created", created.formatted(date: .abbreviated, time: .omitted))
                 }
             }
+            Button { model.openInReminders(item) } label: {
+                Label("Open in Reminders", systemImage: "arrow.up.forward.app").font(.callout)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
         }
     }
 

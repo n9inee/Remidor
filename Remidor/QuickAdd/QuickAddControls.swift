@@ -17,12 +17,8 @@ struct QuickAddControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             buttonRow
-            if !draft.pickedTags.isEmpty {
-                tagChips.transition(RevealTransition())
-            }
-            if showCalendar {
-                calendar.transition(RevealTransition())
-            }
+            Reveal(shown: !draft.pickedTags.isEmpty) { tagChips }
+            Reveal(shown: showCalendar) { calendar }
         }
     }
 

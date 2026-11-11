@@ -1099,11 +1099,17 @@ final class TaskModel {
         for (root, batch) in deferredDeletes.releaseAll() { carryOut(batch, root: root) }
     }
 
-    /// Opens the task's list in the Reminders app, or just the app if the list can't be opened directly.
+    /// Opens the reminder itself in the Reminders app, which shows its list with it selected. If that can't be
+    /// opened it tries the list, and then just the app.
     func openInReminders(_ item: ReminderItem) {
-        guard let url = URL(string: "x-apple-reminderkit://REMCDList/\(item.listID)") else { return openRemindersApp() }
+        let links = ["REMCDReminder/\(item.id)", "REMCDList/\(item.listID)"].compactMap { URL(string: "x-apple-reminderkit://" + $0) }
+        open(links[...])
+    }
+
+    private func open(_ links: ArraySlice<URL>) {
+        guard let url = links.first else { return openRemindersApp() }
         NSWorkspace.shared.open(url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
-            if error != nil { Task { @MainActor in self?.openRemindersApp() } }
+            if error != nil { Task { @MainActor in self?.open(links.dropFirst()) } }
         }
     }
 

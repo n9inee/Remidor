@@ -117,7 +117,7 @@ struct MenuView: View {
         .background(RoundedRectangle(cornerRadius: 7).fill(.quaternary))
         .onAppear { Task { @MainActor in searchFocused = true } }
         .onExitCommand(perform: toggleSearch)
-        .transition(RevealTransition())
+        .transition(.reveal)
     }
 
     /// ⌘F opens and closes the search.
@@ -148,19 +148,19 @@ struct MenuView: View {
                 if creatingList { NewListForm(model: model) { creatingList = false } }
                 if let notice = model.shownNotice {
                     NoticeBanner(notice: notice, onUndo: model.undoNoticeAction)
-                        .transition(RevealTransition())
+                        .transition(.reveal)
                 }
                 if let completed = model.shownCompletion {
                     UndoBanner(item: completed, canUndo: model.undoBannerCanUndo) { model.undoComplete(completed) }
-                        .transition(RevealTransition())
+                        .transition(.reveal)
                 }
                 if let message = model.errorMessage {
                     ErrorBanner(message: message, onDismiss: model.dismissError)
-                        .transition(RevealTransition())
+                        .transition(.reveal)
                 }
                 if let update = updates.availableUpdate {
                     UpdateBanner(update: update, onDismiss: updates.dismissBanner)
-                        .transition(RevealTransition())
+                        .transition(.reveal)
                 }
             }
             .background(searchShortcut)

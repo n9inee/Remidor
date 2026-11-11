@@ -195,7 +195,7 @@ struct QuickSelectList: View {
                             TaskDetails(item: item, model: model)
                                 .padding(.leading, 34).padding(.trailing, 8).padding(.bottom, 6)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .transition(RevealTransition())
+                                .transition(.reveal)
                         }
                     }
                 }

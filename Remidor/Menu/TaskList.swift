@@ -69,7 +69,7 @@ struct TaskList: View {
                     }
                 }
                 .frame(height: visibleHeight)
-                .animation(.snappy(duration: 0.4), value: visibleHeight)
+                .animation(Motion.reveal, value: visibleHeight)
 
                 if (contentHeight ?? 0) > Self.minimumHeight { resizeHandle }
             }
@@ -212,7 +212,7 @@ struct TaskList: View {
                     let carried = drag?.item.id == item.id && drag?.sectionID == section.id
                     TaskRow(item: item, model: model, start: { if !justDragged { onStart(item) } }, done: { model.completeOnly(item) },
                             onEditing: { if $0 { editingIDs.insert(item.id) } else { editingIDs.remove(item.id) } },
-                            highlighted: highlight == section.key(for: item))
+                            highlighted: highlight == section.key(for: item), allowsClicks: { !justDragged })
                         .id(section.key(for: item))
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames.rows[section.id + "|" + item.id] = $0 }
                         .onDisappear { frames.rows[section.id + "|" + item.id] = nil; editingIDs.remove(item.id) }
