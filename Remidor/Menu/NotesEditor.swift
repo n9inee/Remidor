@@ -8,8 +8,7 @@
 import AppKit
 import SwiftUI
 
-/// A plain-text box for notes. Return saves, and Shift + Return starts a new line, which carries a bullet list on
-/// (see `NotesFormatting`).
+/// A plain-text box for notes that carries a bullet list on when Return is pressed (see `NotesFormatting`).
 /// It wraps `NSTextView` because SwiftUI's `TextEditor` can't see the caret or catch Return.
 struct NotesEditor: NSViewRepresentable {
     @Binding var text: String
@@ -17,8 +16,6 @@ struct NotesEditor: NSViewRepresentable {
     var onCancel: (() -> Void)?
     /// The box lost the keyboard focus, for instance because something else in the panel was clicked.
     var onEnd: () -> Void = {}
-    /// Return. Without one, Return starts a new line like any text box.
-    var onSubmit: (() -> Void)?
     /// Takes the keyboard as soon as it is shown. Off for a box that sits under another one with the focus.
     var focusesOnAppear = true
 
@@ -79,22 +76,10 @@ struct NotesEditor: NSViewRepresentable {
             return true
         }
 
-        private func insertPlainNewLine(in view: NSTextView) -> Bool {
-            view.insertText("\n", replacementRange: view.selectedRange())
-            return true
-        }
-
         func textView(_ view: NSTextView, doCommandBy selector: Selector) -> Bool {
             switch selector {
             case #selector(NSResponder.insertNewline(_:)):
-                let shift = NSApp.currentEvent?.modifierFlags.contains(.shift) == true
-                if !shift, let submit = parent.onSubmit {
-                    submit()
-                    return true
-                }
-                return newLine(in: view) || (parent.onSubmit != nil && insertPlainNewLine(in: view))
-            case #selector(NSResponder.insertLineBreak(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
-                return newLine(in: view) || insertPlainNewLine(in: view)
+                return newLine(in: view)
             case #selector(NSResponder.cancelOperation(_:)):
                 guard let cancel = parent.onCancel else { return false }
                 cancel()

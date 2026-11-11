@@ -21,7 +21,7 @@ struct DetailFields: View {
         Reveal(shown: draft.hasText) {
             VStack(spacing: 4) {
                 field("note.text") {
-                    NotesEditor(text: $draft.notes, onCancel: onCancel, onSubmit: onSubmit, focusesOnAppear: focusNotes)
+                    NotesEditor(text: $draft.notes, onCancel: onCancel, focusesOnAppear: focusNotes)
                         .frame(height: 52)
                         .overlay(alignment: .topLeading) {
                             if draft.notes.isEmpty {

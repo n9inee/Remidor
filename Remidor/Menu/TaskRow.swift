@@ -214,12 +214,12 @@ struct TaskDetails: View {
         Group {
             if editingNotes {
                 VStack(alignment: .trailing, spacing: 4) {
-                    NotesEditor(text: $draftNotes, onCancel: cancelNotes, onEnd: endNotes, onSubmit: saveNotes)
+                    NotesEditor(text: $draftNotes, onCancel: cancelNotes, onEnd: endNotes)
                         .frame(height: 90)
                         .padding(4)
                         .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary))
                     HStack(spacing: 6) {
-                        Text("↩ saves · ⇧↩ new line").font(.caption2).foregroundStyle(.tertiary)
+                        Text("⌘↩ saves").font(.caption2).foregroundStyle(.tertiary)
                         Button("Cancel", action: cancelNotes).controlSize(.small)
                         Button("Save", action: saveNotes)
                             .controlSize(.small)

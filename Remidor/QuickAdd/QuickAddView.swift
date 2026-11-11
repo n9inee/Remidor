@@ -193,6 +193,7 @@ struct QuickAddView: View {
             if !draft.title.isEmpty {
                 Button("Add", action: submit)
                     .controlSize(.small)
+                    .keyboardShortcut(.return, modifiers: .command)
                     .disabled(draft.linkIsInvalid)
                     .transition(.opacity)
             }
