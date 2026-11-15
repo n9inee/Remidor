@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+# Local working notes
+memories.md
+
 # Private signing settings for this Mac
 Local.xcconfig
 
