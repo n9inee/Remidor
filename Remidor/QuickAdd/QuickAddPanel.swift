@@ -31,6 +31,29 @@ private final class FittingHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
+/// The top edge of the quick-add box: a clear strip that moves the window when dragged, and says so
+/// with the open-hand cursor. AppKit won't drag the window from the hosting view behind it, so the
+/// strip starts the drag itself.
+private final class DragStrip: NSView {
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .openHand)
+    }
+
+    /// The panel doesn't activate, so the first click has to be enough to start dragging.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        // Starts the drag and returns; the window finishes it on its own.
+        window?.performDrag(with: event)
+    }
+}
+
+/// The strip along the top of the box that drags it out of the way.
+private struct WindowDragArea: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { DragStrip() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
 /// The Spotlight-style add-and-pick box that the global shortcut opens.
 @MainActor
 final class QuickAddPanelController {
@@ -110,12 +133,27 @@ final class QuickAddPanelController {
 
     /// Keeps the window as tall as its content, with the top edge where it is. The content opens and closes
     /// through animated heights, so this follows it frame by frame, and no delay is needed on the way down.
+    /// A box that was dragged away from the top of the screen stays inside it.
     private func follow(_ fit: NSSize, with panel: NSPanel, host: NSView) {
         guard fit.height > 0, abs(fit.height - panel.frame.height) > 0.5 else { return }
         var frame = panel.frame
         frame.origin.y += frame.height - fit.height
         frame.size.height = fit.height
-        panel.setFrame(frame, display: true)
+        panel.setFrame(insideScreen(frame, for: panel), display: true)
+    }
+
+    /// The frame moved back inside the usable part of the panel's screen. A window taller than the screen
+    /// keeps its top edge, since that is where the box and its input field are.
+    private func insideScreen(_ frame: NSRect, for panel: NSPanel) -> NSRect {
+        guard let area = (panel.screen ?? NSScreen.main)?.visibleFrame else { return frame }
+        var result = frame
+        result.origin.x = min(max(result.minX, area.minX), max(area.maxX - result.width, area.minX))
+        if result.height >= area.height {
+            result.origin.y = area.maxY - result.height
+        } else {
+            result.origin.y = min(max(result.minY, area.minY), area.maxY - result.height)
+        }
+        return result
     }
 }
 
@@ -149,6 +187,12 @@ private struct QuickAddPanelContent: View {
         .frame(width: 430)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
+        .overlay(alignment: .top) {
+            // The top edge drags the box out of the way.
+            WindowDragArea()
+                .frame(maxWidth: .infinity)
+                .frame(height: 12)
+        }
         // The window can be taller than the content for a moment; keep the content pinned to the top.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
